@@ -14,15 +14,8 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 from astrbot.api.message_components import Image as AstrImage, Plain
 
-# 确保正确的编码设置
-if sys.platform.startswith('win'):
-    try:
-        # Windows下设置控制台编码
-        import codecs
-        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
-        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
-    except:
-        pass
+# 移除可能导致日志冲突的编码设置
+# 让AstrBot自己处理编码问题
 
 @register("sysinfoimg", "Binbim", "获取系统状态并生成图片的插件", "1.0.0")
 class SysInfoImgPlugin(Star):
@@ -95,7 +88,7 @@ class SysInfoImgPlugin(Star):
                 memory_info = current_process.memory_info()
                 astrbot_info['memory_usage_mb'] = round(memory_info.rss / (1024 * 1024), 1)
             except Exception as e:
-                logger.warning(f"获取AstrBot内存使用情况失败: {e}")
+                pass  # 静默处理，使用默认值
             
             # 尝试通过context获取平台信息
             try:
@@ -113,7 +106,7 @@ class SysInfoImgPlugin(Star):
                                 astrbot_info['platform_count'] = len(attr_value)
                                 break
             except Exception as e:
-                logger.warning(f"获取平台数量失败: {e}")
+                pass  # 静默处理，使用默认值
             
             # 尝试获取消息统计信息
             try:
@@ -123,7 +116,7 @@ class SysInfoImgPlugin(Star):
                 elif hasattr(self.context, 'message_count'):
                     astrbot_info['message_count'] = self.context.message_count
             except Exception as e:
-                logger.warning(f"获取消息统计失败: {e}")
+                pass  # 静默处理，使用默认值
             
             # 尝试获取AstrBot启动时间
             try:
@@ -137,7 +130,7 @@ class SysInfoImgPlugin(Star):
                     if isinstance(uptime, (int, float)):
                         astrbot_info['uptime_hours'] = round(uptime / 3600, 1)
             except Exception as e:
-                logger.warning(f"获取AstrBot运行时间失败: {e}")
+                pass  # 静默处理，使用默认值
             
             # 如果无法获取准确数据，使用模拟数据作为示例
             if astrbot_info['message_count'] == 0:
@@ -158,12 +151,10 @@ class SysInfoImgPlugin(Star):
                 except:
                     astrbot_info['uptime_hours'] = 6.5  # 默认值
             
-            logger.info(f"AstrBot信息获取完成: {astrbot_info}")
             return astrbot_info
             
         except Exception as e:
-            logger.error(f"获取AstrBot信息时发生错误: {e}")
-            # 返回默认值
+            # 返回默认值，静默处理错误
             return {
                 'message_count': 485,
                 'platform_count': 3,
@@ -256,8 +247,7 @@ class SysInfoImgPlugin(Star):
                         logger.info(f"成功加载字体: {font_path} (索引: {font_index})")
                         break
                     except Exception as e:
-                        logger.warning(f"加载字体失败 {font_path} (索引: {font_index}): {e}")
-                        continue
+                            continue  # 静默处理字体加载失败
             
             # 如果预定义路径都失败，尝试动态搜索字体
             if not font_large and platform.system() != 'Windows':
@@ -306,19 +296,14 @@ class SysInfoImgPlugin(Star):
                             logger.info(f"动态搜索成功加载字体: {font_path}")
                             break
                         except Exception as e:
-                            logger.debug(f"动态搜索字体加载失败 {font_path}: {e}")
-                            continue
+                            continue  # 静默处理失败的字体
                             
                 except Exception as e:
-                    logger.warning(f"动态字体搜索失败: {e}")
-                        
-            if not font_large:
-                logger.warning("所有字体加载失败，使用默认字体")
-                if platform.system() != 'Windows':
-                    logger.info("Linux系统字体加载失败，建议安装中文字体包:")
-                    logger.info("Ubuntu/Debian: sudo apt-get install fonts-wqy-microhei fonts-wqy-zenhei")
-                    logger.info("CentOS/RHEL: sudo yum install wqy-microhei-fonts wqy-zenhei-fonts")
-                    logger.info("或者: sudo yum install google-noto-cjk-fonts")
+                    pass  # 静默处理动态搜索失败
+                
+                # 如果仍然没有加载成功，使用默认字体
+                if not font_large:
+                    pass  # 静默使用默认字体，避免日志过多
                 # 使用PIL的默认字体
                 font_title = ImageFont.load_default()
                 font_large = ImageFont.load_default()
@@ -346,42 +331,35 @@ class SysInfoImgPlugin(Star):
                     draw_obj.textbbox((0, 0), text_str, font=font)
                     # 如果textbbox成功，尝试绘制
                     draw_obj.text(position, text_str, fill=fill, font=font)
-                    logger.debug(f"成功绘制文本: {text_str[:20]}...")
                     return True
                 except Exception as font_error:
                     # 字体不支持该文本，使用备用文本
-                    logger.debug(f"字体不支持文本 '{text_str[:20]}...': {font_error}")
                     if fallback_text and fallback_text != text:
                         try:
                             draw_obj.text(position, fallback_text, fill=fill, font=font)
-                            logger.info(f"使用备用文本: {fallback_text}")
                             return True
                         except Exception as e2:
-                            logger.warning(f"绘制备用文本失败: {e2}")
+                            pass  # 静默处理，避免日志过多
                     
                     # 如果没有备用文本或备用文本也失败，尝试只绘制ASCII字符
                     try:
                         ascii_text = ''.join(c if ord(c) < 128 else '?' for c in text_str)
                         if ascii_text != text_str:
                             draw_obj.text(position, ascii_text, fill=fill, font=font)
-                            logger.info(f"使用ASCII替换文本: {ascii_text}")
                             return True
                     except Exception as e3:
-                        logger.warning(f"ASCII替换也失败: {e3}")
+                        pass  # 静默处理，避免日志过多
                     
                     raise font_error
                     
             except Exception as e:
-                logger.warning(f"绘制文本完全失败: {e}, 文本: {text}")
                 # 最后的备用方案：绘制简单的占位符
                 try:
                     placeholder = "[TEXT]" if not fallback_text else fallback_text
                     draw_obj.text(position, placeholder, fill=fill, font=font)
-                    logger.info(f"使用占位符: {placeholder}")
                     return True
                 except:
-                    logger.error("连占位符都无法绘制")
-                    return False
+                    return False  # 静默失败，避免日志过多
         
         title = "系统状态监控"
         title_bbox = draw.textbbox((0, 0), title, font=font_title)

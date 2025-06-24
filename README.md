@@ -159,6 +159,12 @@ sudo pacman -S wqy-microhei wqy-zenhei noto-fonts-cjk
 
 ## 更新日志
 
+### v1.0.3
+- 🔧 **优化日志输出**: 减少不必要的debug和info级别日志
+- 🔇 **静默处理**: 静默处理字体加载失败等非关键错误
+- 🐛 **修复问题**: 解决部分用户反馈的logging error问题
+- 🛡️ **提升稳定性**: 提升插件运行稳定性
+
 ### v1.0.2
 - 🤖 **新增AstrBot状态监控**: 显示消息总数、平台数、运行时间、内存占用
 - 🎨 **全新UI设计**: 添加彩色信息卡片，提升视觉效果
@@ -184,6 +190,7 @@ sudo pacman -S wqy-microhei wqy-zenhei noto-fonts-cjk
 如有问题或建议，请访问：
 - [AstrBot 官方文档](https://astrbot.app)
 - [插件开发文档](https://astrbot.app/dev/star/plugin.html)
+- [开发者联系方式](https://qm.qq.com/q/nDHgJBm5Mc)
 
 ## 许可证
 

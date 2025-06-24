@@ -1,5 +1,5 @@
 name: sysinfoimg # 这是你的插件的唯一识别名。
-desc: 生成系统状态监控图片，包含系统信息和AstrBot运行数据 # 插件简短描述
-version: v1.0.2 # 插件版本号。格式：v1.1.1 或者 v1.1
+desc: 生成包含系统硬件信息和AstrBot运行数据的系统状态监控图片，优化日志输出 # 插件简短描述
+version: v1.0.3 # 插件版本号。格式：v1.1.1 或者 v1.1
 author: Binbim # 作者
 repo: https://github.com/BB0813/astrbot_plugin_sysinfoimg # 插件的仓库地址
