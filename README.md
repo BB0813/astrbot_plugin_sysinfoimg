@@ -159,6 +159,9 @@ sudo pacman -S wqy-microhei wqy-zenhei noto-fonts-cjk
 
 ## 更新日志
 
+### v1.0.4
+- 🔧 **修复比例圆环错误**: 纠正可见比例错误
+
 ### v1.0.3
 - 🔧 **优化日志输出**: 减少不必要的debug和info级别日志
 - 🔇 **静默处理**: 静默处理字体加载失败等非关键错误
