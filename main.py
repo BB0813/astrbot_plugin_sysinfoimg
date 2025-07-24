@@ -427,12 +427,12 @@ class SysInfoImgPlugin(Star):
             
             # 计算进度弧度
             start_angle = -90  # 从顶部开始
-            end_angle = start_angle + (percentage / 100) * 360
+            arc_length = int((percentage / 100) * 360)
             
             # 绘制进度弧（使用多个小弧段来模拟）
             if percentage > 0:
-                for i in range(int(percentage * 3.6)):  # 每度一个点
-                    angle = math.radians(start_angle + i / 3.6)
+                for i in range(arc_length):  # 每度一个点
+                    angle = math.radians(start_angle + i)
                     x1 = center_x + (radius - 4) * math.cos(angle)
                     y1 = center_y + (radius - 4) * math.sin(angle)
                     x2 = center_x + (radius + 4) * math.cos(angle)
