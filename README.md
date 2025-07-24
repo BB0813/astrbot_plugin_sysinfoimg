@@ -194,6 +194,7 @@ sudo pacman -S wqy-microhei wqy-zenhei noto-fonts-cjk
 - [AstrBot 官方文档](https://astrbot.app)
 - [插件开发文档](https://astrbot.app/dev/star/plugin.html)
 - [开发者联系方式](https://qm.qq.com/q/nDHgJBm5Mc)
+- [插件反馈群](https://qm.qq.com/q/d4lwUp9ap4)
 
 ## 许可证
 
