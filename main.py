@@ -8,6 +8,7 @@ import io
 import base64
 import math
 import time
+
 from PIL import Image, ImageDraw, ImageFont
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
@@ -17,7 +18,7 @@ from astrbot.api.message_components import Image as AstrImage, Plain
 # 移除可能导致日志冲突的编码设置
 # 让AstrBot自己处理编码问题
 
-@register("sysinfoimg", "Binbim", "获取系统状态并生成图片的插件", "1.0.0")
+@register("sysinfoimg", "Binbim", "专注于系统硬件监控的插件，生成美观的系统状态图片", "1.0.5")
 class SysInfoImgPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -25,6 +26,111 @@ class SysInfoImgPlugin(Star):
     async def initialize(self):
         """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
         logger.info("系统信息图片插件已初始化")
+    
+
+    
+    def get_disk_partitions_info(self):
+        """获取所有磁盘分区信息"""
+        import os
+        partitions = []
+        
+        try:
+            # 获取所有磁盘分区
+            all_partitions = psutil.disk_partitions()
+            logger.info(f"检测到 {len(all_partitions)} 个磁盘分区")
+            
+            # 需要跳过的伪/系统文件系统类型
+            skip_fstypes = {
+                'proc','sysfs','cgroup','overlay','squashfs','aufs','ramfs','tmpfs',
+                'devtmpfs','devpts','mqueue','hugetlbfs','fuse','fuseblk','fuse.lxcfs',
+                'pstore','securityfs','configfs','efivarfs','selinuxfs','bpf','autofs',
+                'tracefs','nsfs','binfmt_misc','iso9660','nfs','cifs','smbfs'
+            }
+            
+            # Windows系统盘识别（更稳健）
+            system_drive = None
+            if platform.system() == 'Windows':
+                system_drive = os.environ.get('SystemDrive', 'C:') + '\\'
+            
+            for partition in all_partitions:
+                try:
+                    # 跳过伪文件系统类型
+                    if partition.fstype and partition.fstype.lower() in skip_fstypes:
+                        continue
+                    # 跳过特殊设备名
+                    if any(skip in partition.device.lower() for skip in ['loop', 'ram']):
+                        continue
+                    
+                    # 获取分区使用情况
+                    usage = psutil.disk_usage(partition.mountpoint)
+                    
+                    # 过滤掉小容量分区
+                    total_gb = round(usage.total / (1024**3), 2)
+                    if total_gb < 1:
+                        continue
+                    
+                    # 判断是否为系统盘
+                    is_system_disk = False
+                    if platform.system() == 'Windows':
+                        # 使用挂载点匹配系统盘盘符
+                        is_system_disk = (partition.mountpoint.rstrip('\\').upper() + '\\') == (system_drive.upper())
+                    else:
+                        is_system_disk = partition.mountpoint == '/'
+                    
+                    partition_info = {
+                        'device': partition.device,
+                        'mountpoint': partition.mountpoint,
+                        'fstype': partition.fstype,
+                        'total': total_gb,
+                        'used': round(usage.used / (1024**3), 2),
+                        'free': round(usage.free / (1024**3), 2),
+                        'percent': round(usage.percent, 2),
+                        'is_system_disk': is_system_disk
+                    }
+                    
+                    partitions.append(partition_info)
+                    logger.info(f"添加磁盘分区: {partition.device} -> {partition.mountpoint} "
+                              f"({total_gb}GB, 系统盘: {is_system_disk})")
+                    
+                except (PermissionError, OSError) as e:
+                    logger.warning(f"跳过无法访问的分区 {partition.device}: {e}")
+                    continue
+                
+        except Exception as e:
+            logger.warning(f"获取磁盘分区信息时出错: {e}")
+            # 回退到单磁盘模式
+            try:
+                if platform.system() == 'Windows':
+                    disk_path = system_drive or 'C:\\'
+                else:
+                    disk_path = '/'
+                disk = psutil.disk_usage(disk_path)
+                total_gb = round(disk.total / (1024**3), 2)
+                used_gb = round(disk.used / (1024**3), 2)
+                partitions = [{
+                    'device': disk_path,
+                    'mountpoint': disk_path,
+                    'fstype': 'unknown',
+                    'total': total_gb,
+                    'used': used_gb,
+                    'free': round(disk.free / (1024**3), 2),
+                    'percent': round(disk.percent if hasattr(disk, 'percent') else (disk.used / disk.total) * 100, 2),
+                    'is_system_disk': True
+                }]
+                logger.info(f"回退到单磁盘模式: {disk_path}")
+            except Exception as fallback_error:
+                logger.error(f"回退磁盘信息获取失败: {fallback_error}")
+                partitions = []
+        
+        # 排序：系统盘优先，其次按使用率降序
+        partitions.sort(key=lambda d: (not d['is_system_disk'], -d['percent']))
+        
+        # 记录最终结果
+        system_disks = [d for d in partitions if d['is_system_disk']]
+        data_disks = [d for d in partitions if not d['is_system_disk']]
+        logger.info(f"磁盘分区统计: 系统盘 {len(system_disks)} 个, 数据盘 {len(data_disks)} 个")
+        
+        return partitions
     
     def get_system_info(self):
         """获取系统信息"""
@@ -39,16 +145,14 @@ class SysInfoImgPlugin(Star):
         memory_used = round(memory.used / (1024**3), 2)   # GB
         memory_percent = memory.percent
         
-        # 获取磁盘信息
-        import os
-        if platform.system() == 'Windows':
-            disk_path = 'C:\\'
-        else:
-            disk_path = '/'
-        disk = psutil.disk_usage(disk_path)
-        disk_total = round(disk.total / (1024**3), 2)  # GB
-        disk_used = round(disk.used / (1024**3), 2)   # GB
-        disk_percent = round((disk.used / disk.total) * 100, 2)
+        # 获取磁盘信息（多硬盘）
+        disk_partitions = self.get_disk_partitions_info()
+        
+        # 获取主磁盘信息（用于兼容性）
+        main_disk = None
+        if disk_partitions:
+            # 优先使用系统盘，否则使用第一个磁盘
+            main_disk = next((d for d in disk_partitions if d['is_system_disk']), disk_partitions[0])
         
         # 获取系统信息
         system_info = {
@@ -65,107 +169,37 @@ class SysInfoImgPlugin(Star):
             'memory_total': memory_total,
             'memory_used': memory_used,
             'memory_percent': memory_percent,
-            'disk_total': disk_total,
-            'disk_used': disk_used,
-            'disk_percent': disk_percent
+            'disk_partitions': disk_partitions,  # 多硬盘信息
+            'main_disk': main_disk,  # 主磁盘信息
+            # 以下字段保持兼容性
+            'disk_total': main_disk['total'] if main_disk else 0,
+            'disk_used': main_disk['used'] if main_disk else 0,
+            'disk_percent': main_disk['percent'] if main_disk else 0
         }
         
         return system_info
     
-    def get_astrbot_info(self):
-        """获取AstrBot相关信息"""
-        try:
-            astrbot_info = {
-                'message_count': 0,  # 消息总数 - 默认值
-                'platform_count': 0,  # 消息平台数
-                'uptime_hours': 0,  # 运行时间（小时）
-                'memory_usage_mb': 0  # 内存占用（MB）
-            }
-            
-            # 获取AstrBot进程的内存使用情况
-            try:
-                current_process = psutil.Process()
-                memory_info = current_process.memory_info()
-                astrbot_info['memory_usage_mb'] = round(memory_info.rss / (1024 * 1024), 1)
-            except Exception as e:
-                pass  # 静默处理，使用默认值
-            
-            # 尝试通过context获取平台信息
-            try:
-                if hasattr(self.context, 'get_platforms') and callable(self.context.get_platforms):
-                    platforms = self.context.get_platforms()
-                    astrbot_info['platform_count'] = len(platforms) if platforms else 0
-                elif hasattr(self.context, 'platforms'):
-                    astrbot_info['platform_count'] = len(self.context.platforms) if self.context.platforms else 0
-                else:
-                    # 尝试其他可能的属性
-                    for attr_name in ['adapters', 'platform_manager', 'message_platforms']:
-                        if hasattr(self.context, attr_name):
-                            attr_value = getattr(self.context, attr_name)
-                            if hasattr(attr_value, '__len__'):
-                                astrbot_info['platform_count'] = len(attr_value)
-                                break
-            except Exception as e:
-                pass  # 静默处理，使用默认值
-            
-            # 尝试获取消息统计信息
-            try:
-                if hasattr(self.context, 'get_message_stats') and callable(self.context.get_message_stats):
-                    stats = self.context.get_message_stats()
-                    astrbot_info['message_count'] = stats.get('total_messages', 0) if stats else 0
-                elif hasattr(self.context, 'message_count'):
-                    astrbot_info['message_count'] = self.context.message_count
-            except Exception as e:
-                pass  # 静默处理，使用默认值
-            
-            # 尝试获取AstrBot启动时间
-            try:
-                if hasattr(self.context, 'start_time'):
-                    start_time = self.context.start_time
-                    if isinstance(start_time, datetime.datetime):
-                        uptime_delta = datetime.datetime.now() - start_time
-                        astrbot_info['uptime_hours'] = round(uptime_delta.total_seconds() / 3600, 1)
-                elif hasattr(self.context, 'get_uptime') and callable(self.context.get_uptime):
-                    uptime = self.context.get_uptime()
-                    if isinstance(uptime, (int, float)):
-                        astrbot_info['uptime_hours'] = round(uptime / 3600, 1)
-            except Exception as e:
-                pass  # 静默处理，使用默认值
-            
-            # 如果无法获取准确数据，使用模拟数据作为示例
-            if astrbot_info['message_count'] == 0:
-                # 使用一个基于当前时间的伪随机数作为示例
-                import time
-                seed = int(time.time()) % 1000
-                astrbot_info['message_count'] = 485 + seed  # 基础值 + 变化值
-            
-            if astrbot_info['platform_count'] == 0:
-                astrbot_info['platform_count'] = 3  # 默认显示3个平台
-            
-            if astrbot_info['uptime_hours'] == 0:
-                # 使用系统启动时间作为近似值
-                try:
-                    boot_time = psutil.boot_time()
-                    uptime_seconds = time.time() - boot_time
-                    astrbot_info['uptime_hours'] = round(uptime_seconds / 3600, 1)
-                except:
-                    astrbot_info['uptime_hours'] = 6.5  # 默认值
-            
-            return astrbot_info
-            
-        except Exception as e:
-            # 返回默认值，静默处理错误
-            return {
-                'message_count': 485,
-                'platform_count': 3,
-                'uptime_hours': 6.5,
-                'memory_usage_mb': 213.0
-            }
-    
-    def create_system_info_image(self, system_info, astrbot_info=None):
+
+
+    def create_system_info_image(self, system_info):
         """创建系统信息图片"""
-        # 创建图片 - 增加高度以容纳AstrBot信息
-        width, height = 900, 850
+        logger.info("开始生成系统信息图片")
+        # 参数摘要日志
+        try:
+            sys_summary = {
+                'system': system_info.get('system'),
+                'release': system_info.get('release'),
+                'cpu_percent': system_info.get('cpu_percent'),
+                'memory_percent': system_info.get('memory_percent'),
+                'disk_percent': system_info.get('disk_percent'),
+                'cpu_count': system_info.get('cpu_count'),
+                'main_disk': system_info.get('main_disk')
+            }
+            logger.info(f"系统信息摘要: {sys_summary}")
+        except Exception as e:
+            logger.warning(f"记录参数摘要失败: {e}")
+        # 创建图片
+        width, height = 900, 650
         img = Image.new('RGBA', (width, height), color=(26, 26, 46, 255))
         draw = ImageDraw.Draw(img)
         
@@ -176,7 +210,7 @@ class SysInfoImgPlugin(Star):
             b = int(46 + (94 - 46) * i / height)
             color = (r, g, b)
             draw.line([(0, i), (width, i)], fill=color)
-        
+        logger.info("背景绘制完成")
         try:
             # 尝试使用中文字体
             import os
@@ -247,7 +281,8 @@ class SysInfoImgPlugin(Star):
                         logger.info(f"成功加载字体: {font_path} (索引: {font_index})")
                         break
                     except Exception as e:
-                            continue  # 静默处理字体加载失败
+                        logger.warning(f"字体加载失败: {font_path}, {e}")
+                        continue  # 静默处理字体加载失败
             
             # 如果预定义路径都失败，尝试动态搜索字体
             if not font_large and platform.system() != 'Windows':
@@ -283,6 +318,7 @@ class SysInfoImgPlugin(Star):
                                 if any(keyword in font_name_lower for keyword in chinese_font_keywords):
                                     found_fonts.append(font_file)
                         except Exception as e:
+                            logger.warning(f"动态搜索字体失败: {search_path}, {e}")
                             continue
                     
                     # 尝试加载找到的字体
@@ -296,9 +332,11 @@ class SysInfoImgPlugin(Star):
                             logger.info(f"动态搜索成功加载字体: {font_path}")
                             break
                         except Exception as e:
+                            logger.warning(f"尝试加载字体失败: {font_path}, {e}")
                             continue  # 静默处理失败的字体
                             
                 except Exception as e:
+                    logger.warning(f"动态搜索字体过程异常: {e}")
                     pass  # 静默处理动态搜索失败
                 
                 # 如果仍然没有加载成功，使用默认字体
@@ -309,13 +347,21 @@ class SysInfoImgPlugin(Star):
                 font_large = ImageFont.load_default()
                 font_medium = ImageFont.load_default()
                 font_small = ImageFont.load_default()
-                
+            
         except Exception as e:
             logger.error(f"字体初始化错误: {e}")
             font_title = ImageFont.load_default()
             font_large = ImageFont.load_default()
             font_medium = ImageFont.load_default()
             font_small = ImageFont.load_default()
+        
+        # 确保字体对象不为None（跨平台兜底）
+        if not all([font_title, font_large, font_medium, font_small]):
+            font_title = ImageFont.load_default()
+            font_large = ImageFont.load_default()
+            font_medium = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+        logger.info(f"字体就绪，路径: {loaded_font_path if 'loaded_font_path' in locals() else 'default'}")
         
         # 绘制主标题
         def safe_draw_text(draw_obj, position, text, fill, font, fallback_text=None):
@@ -366,8 +412,103 @@ class SysInfoImgPlugin(Star):
         title_width = title_bbox[2] - title_bbox[0]
         safe_draw_text(draw, ((width - title_width) // 2, 30), title, '#ffffff', font_title, "System Monitor")
         
-        # 绘制系统基本信息区域
+        # 调用绘制系统信息区域
+        self.draw_system_info_section(draw, system_info, font_large, font_medium, safe_draw_text)
+        
+        # 调用绘制性能监控区域
+        self.draw_performance_section(draw, system_info, font_medium, font_small)
+        
+        # 调用绘制数据磁盘区域
+        self.draw_data_disks_section(draw, system_info, font_large, font_small, safe_draw_text, width)
+        
+        # 添加数据来源标识
+        source_text = "数据来源: 系统监控 (psutil)"
+        source_text_en = "Data Source: System Monitor (psutil)"
+        source_bbox = draw.textbbox((0, 0), source_text, font=font_small)
+        source_width = source_bbox[2] - source_bbox[0]
+        safe_draw_text(draw, (width - source_width - 20, height - 30), source_text, 
+                      '#718096', font_small, source_text_en)
+        
+        # 保存图片到内存 - 稳健的RGBA合成后保存PNG
+        logger.info("进入PNG保存阶段")
+        img_data = None
+        try:
+            base_rgba = Image.new('RGBA', (width, height), color=(26, 26, 46, 255))
+            composed = Image.alpha_composite(base_rgba, img)
+            rgb_img = composed.convert('RGB')
+            img_buffer = io.BytesIO()
+            rgb_img.save(img_buffer, format='PNG')
+            img_data = img_buffer.getvalue()
+            logger.info(f"图片生成成功（alpha合成），字节长度: {len(img_data)}")
+            if not img_data:
+                raise ValueError("生成的图片字节为空")
+        except Exception as e:
+            logger.warning(f"alpha合成保存失败，尝试直接保存RGB：{e}")
+            try:
+                # 备用方案：直接将原图转换为RGB后保存
+                direct_rgb = img.convert('RGB')
+                buf2 = io.BytesIO()
+                direct_rgb.save(buf2, format='PNG')
+                img_data = buf2.getvalue()
+                logger.info(f"图片生成成功（直接RGB），字节长度: {len(img_data)}")
+                if not img_data:
+                    raise ValueError("生成的图片字节为空(直接RGB)")
+            except Exception as e2:
+                logger.error(f"图片生成完全失败，使用备用图片: {e2}")
+                img_data = self.create_fallback_image("系统信息图片生成失败")
+                logger.info(f"备用图片字节长度: {len(img_data) if isinstance(img_data, (bytes, bytearray)) else '非字节'}")
+        # 最终返回保护
+        if not isinstance(img_data, (bytes, bytearray)) or len(img_data) == 0:
+            logger.error("最终返回保护触发：返回备用图片")
+            img_data = self.create_fallback_image("系统信息图片生成失败(最终保护)")
+        logger.info(f"create_system_info_image 即将返回，类型: {type(img_data)}, 长度: {len(img_data) if isinstance(img_data, (bytes, bytearray)) else 'N/A'}")
+        return img_data
+
+    def format_uptime(self, seconds):
+        """格式化运行时间"""
+        try:
+            if hasattr(seconds, 'total_seconds'):
+                seconds = int(seconds.total_seconds())
+            else:
+                seconds = int(seconds)
+            
+            days = seconds // 86400
+            hours = (seconds % 86400) // 3600
+            minutes = (seconds % 3600) // 60
+            
+            if days > 0:
+                return f"{days}天{hours}小时{minutes}分钟"
+            elif hours > 0:
+                return f"{hours}小时{minutes}分钟"
+            else:
+                return f"{minutes}分钟"
+        except:
+            return "未知"
+    
+    def format_network_traffic(self, bytes_sent, bytes_recv):
+        """格式化网络流量"""
+        try:
+            sent_mb = bytes_sent / (1024 * 1024)
+            recv_mb = bytes_recv / (1024 * 1024)
+            
+            if sent_mb >= 1024:
+                sent_str = f"{sent_mb/1024:.1f}GB"
+            else:
+                sent_str = f"{sent_mb:.1f}MB"
+                
+            if recv_mb >= 1024:
+                recv_str = f"{recv_mb/1024:.1f}GB"
+            else:
+                recv_str = f"{recv_mb:.1f}MB"
+                
+            return f"↑{sent_str} ↓{recv_str}"
+        except:
+            return "↑0.0MB ↓0.0MB"
+
+    def draw_system_info_section(self, draw, system_info, font_large, font_medium, safe_draw_text):
+        """绘制系统基本信息区域"""
         info_y = 100
+        width = 900
         
         # 绘制系统信息背景框
         info_box_height = 180
@@ -382,27 +523,27 @@ class SysInfoImgPlugin(Star):
         if len(processor_info) > 40:
             processor_info = processor_info[:40] + "..."
         
-        # 运行时间格式化
-        uptime_delta = system_info['uptime']
-        days = uptime_delta.days
-        hours, remainder = divmod(uptime_delta.seconds, 3600)
-        minutes, _ = divmod(remainder, 60)
-        uptime_formatted = f"{days}天 {hours}小时 {minutes}分钟"
-        
-        # 系统信息列表
+        # 生成系统信息列表
         try:
+            # 获取网络流量信息
+            net_io = psutil.net_io_counters()
+            network_traffic = self.format_network_traffic(net_io.bytes_sent, net_io.bytes_recv)
+            
+            # 格式化运行时间
+            uptime_formatted = self.format_uptime(system_info['uptime'])
+            
             info_lines_cn = [
                 f"系统信息: {system_info['system']} {system_info['release']}",
                 f"运行时间: {uptime_formatted}",
                 f"系统负载: {system_info['cpu_percent']:.2f}%, {system_info['memory_percent']:.1f}%, {system_info['disk_percent']:.1f}%",
-                f"网络流量: ↑0.0MB ↓{psutil.net_io_counters().bytes_recv / (1024*1024):.1f}MB",
+                f"网络流量: {network_traffic}",
                 f"当前时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             ]
             info_lines_en = [
                 f"System: {system_info['system']} {system_info['release']}",
                 f"Uptime: {uptime_formatted}",
                 f"Load: {system_info['cpu_percent']:.2f}%, {system_info['memory_percent']:.1f}%, {system_info['disk_percent']:.1f}%",
-                f"Network: ↑0.0MB ↓{psutil.net_io_counters().bytes_recv / (1024*1024):.1f}MB",
+                f"Network: {network_traffic}",
                 f"Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             ]
         except Exception as e:
@@ -415,8 +556,10 @@ class SysInfoImgPlugin(Star):
         for i, (line_cn, line_en) in enumerate(zip(info_lines_cn, info_lines_en)):
             safe_draw_text(draw, (60, y_pos), line_cn, '#cbd5e0', font_medium, line_en)
             y_pos += 25
+        logger.info("系统基本信息区域绘制完成")
         
-        # 绘制性能监控区域
+    def draw_performance_section(self, draw, system_info, font_medium, font_small):
+        """绘制性能监控区域"""
         monitor_y = 320
         
         # 绘制圆形进度指示器
@@ -469,124 +612,126 @@ class SysInfoImgPlugin(Star):
                              mem_color, 'MEM', 
                              f"{system_info['memory_used']:.1f}G/{system_info['memory_total']:.1f}G")
         
-        # 磁盘使用率圆形指示器
-        disk_color = '#9f7aea' if system_info['disk_percent'] < 90 else '#e53e3e'
-        draw_circular_progress(700, monitor_y + 80, 60, system_info['disk_percent'], 
-                             disk_color, 'DISK', 
-                             f"{system_info['disk_used']:.0f}G/{system_info['disk_total']:.0f}G")
+        # 主磁盘使用率圆形指示器（系统盘）
+        if system_info['main_disk']:
+            main_disk = system_info['main_disk']
+            disk_color = '#9f7aea' if main_disk['percent'] < 90 else '#e53e3e'
+            disk_label = '系统盘' if main_disk['is_system_disk'] else '主磁盘'
+            disk_label_en = 'System Disk' if main_disk['is_system_disk'] else 'Main Disk'
+            draw_circular_progress(700, monitor_y + 80, 60, main_disk['percent'], 
+                                 disk_color, disk_label, 
+                                 f"{main_disk['used']:.0f}G/{main_disk['total']:.0f}G")
+        logger.info("性能监控区域绘制完成")
+    def draw_data_disks_section(self, draw, system_info, font_large, font_small, safe_draw_text, width):
+        """绘制数据磁盘区域"""
+        monitor_y = 320
         
-        # 绘制AstrBot信息区域
-        if astrbot_info:
-            astrbot_y = 520
+        # 绘制多硬盘信息区域
+        disk_partitions = system_info.get('disk_partitions', [])
+        data_disks = [d for d in disk_partitions if not d['is_system_disk']]
+        
+        # 如果没有数据磁盘，显示所有磁盘（除了第一个系统磁盘）
+        disks_to_show = data_disks
+        title = "数据磁盘"
+        
+        if not data_disks:
+            # 如果没有数据磁盘，显示所有磁盘
+            disks_to_show = disk_partitions[1:] if len(disk_partitions) > 1 else disk_partitions
+            title = "磁盘分区"
+            logger.info("没有检测到数据磁盘，显示所有磁盘分区")
+        
+        if disks_to_show:
+            disks_y = monitor_y + 180
             
-            # AstrBot信息标题
-            safe_draw_text(draw, (60, astrbot_y), "AstrBot 状态", '#e2e8f0', font_large, "AstrBot Status")
+            # 绘制磁盘标题
+            safe_draw_text(draw, (60, disks_y), title, '#e2e8f0', font_large, "Disk Partitions")
             
-            # 绘制四个AstrBot信息卡片
-            def draw_info_card(x, y, width_card, height_card, title, value, unit, color, title_en):
-                # 绘制卡片背景
-                draw.rounded_rectangle([x, y, x + width_card, y + height_card], 
-                                     radius=12, fill=(*color, 40), outline=color, width=2)
+            # 绘制磁盘列表
+            disk_start_y = disks_y + 40
+            for i, disk in enumerate(disks_to_show[:4]):  # 最多显示4个磁盘
+                y_pos = disk_start_y + i * 25
                 
-                # 绘制图标区域（左上角小方块）
-                icon_size = 8
-                draw.rounded_rectangle([x + 15, y + 15, x + 15 + icon_size, y + 15 + icon_size], 
-                                     radius=2, fill=color)
+                # 磁盘基本信息
+                disk_name = f"{disk['device']} ({disk['mountpoint']})"
+                disk_info = f"{disk['used']:.1f}G / {disk['total']:.1f}G ({disk['percent']:.1f}%)"
                 
-                # 绘制标题
-                safe_draw_text(draw, (x + 15, y + 35), title, '#a0aec0', font_small, title_en)
+                # 绘制磁盘名称
+                safe_draw_text(draw, (60, y_pos), disk_name, '#cbd5e0', font_small, disk['device'])
                 
-                # 绘制数值
-                value_text = str(value)
-                safe_draw_text(draw, (x + 15, y + 55), value_text, '#ffffff', font_large)
+                # 绘制磁盘信息
+                info_bbox = draw.textbbox((0, 0), disk_info, font=font_small)
+                info_width = info_bbox[2] - info_bbox[0]
+                safe_draw_text(draw, (width - info_width - 60, y_pos), disk_info, '#cbd5e0', font_small, disk_info)
                 
-                # 绘制单位（如果有）
-                if unit:
-                    unit_bbox = draw.textbbox((0, 0), value_text, font=font_large)
-                    unit_x = x + 15 + (unit_bbox[2] - unit_bbox[0]) + 5
-                    safe_draw_text(draw, (unit_x, y + 65), unit, '#a0aec0', font_small)
-            
-            # 卡片尺寸和位置
-            card_width = 180
-            card_height = 100
-            card_spacing = 15
-            start_x = 60
-            
-            # 消息总数卡片（紫色）
-            draw_info_card(start_x, astrbot_y + 40, card_width, card_height, 
-                          "消息总数", astrbot_info['message_count'], "条消息已处理", 
-                          (139, 92, 246), "Messages")
-            
-            # 消息平台数卡片（蓝色）
-            draw_info_card(start_x + card_width + card_spacing, astrbot_y + 40, card_width, card_height, 
-                          "消息平台", astrbot_info['platform_count'], "个平台已连接", 
-                          (59, 130, 246), "Platforms")
-            
-            # 运行时间卡片（绿色）
-            uptime_text = f"{astrbot_info['uptime_hours']:.1f}"
-            draw_info_card(start_x + (card_width + card_spacing) * 2, astrbot_y + 40, card_width, card_height, 
-                          "运行时间", uptime_text, "小时", 
-                          (34, 197, 94), "Uptime")
-            
-            # 内存占用卡片（橙色）
-            memory_text = f"{astrbot_info['memory_usage_mb']:.1f}"
-            draw_info_card(start_x + (card_width + card_spacing) * 3, astrbot_y + 40, card_width, card_height, 
-                          "内存占用", memory_text, "MB", 
-                          (249, 115, 22), "Memory")
+                # 绘制使用率条
+                bar_width = 200
+                bar_height = 6
+                bar_x = width - info_width - 80 - bar_width
+                bar_y = y_pos + 8
+                
+                # 背景条
+                draw.rectangle([bar_x, bar_y, bar_x + bar_width, bar_y + bar_height], 
+                             fill='#2d3748', outline='#4a5568', width=1)
+                
+                # 进度条
+                progress_width = int(bar_width * (disk['percent'] / 100))
+                disk_bar_color = '#48bb78' if disk['percent'] < 80 else '#ed8936' if disk['percent'] < 90 else '#e53e3e'
+                if progress_width > 0:
+                    draw.rectangle([bar_x, bar_y, bar_x + progress_width, bar_y + bar_height], 
+                                 fill=disk_bar_color)
+                
+                logger.info(f"绘制磁盘: {disk['device']} ({disk['percent']:.1f}%)")
+        else:
+            logger.warning("没有可显示的磁盘分区")
         
-        # 添加数据来源标识
-        source_text = "数据来源: 系统监控 (psutil) + AstrBot"
-        source_text_en = "Data Source: System Monitor (psutil) + AstrBot"
-        source_bbox = draw.textbbox((0, 0), source_text, font=font_small)
-        source_width = source_bbox[2] - source_bbox[0]
-        safe_draw_text(draw, (width - source_width - 20, height - 30), source_text, 
-                      '#718096', font_small, source_text_en)
-        
-        # 保存图片到内存 - 转换为RGB模式以确保兼容性
-        rgb_img = Image.new('RGB', (width, height), color=(26, 26, 46))
-        rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-        
-        img_buffer = io.BytesIO()
-        rgb_img.save(img_buffer, format='PNG')
-        img_buffer.seek(0)
-        
-        return img_buffer.getvalue()
+        logger.info("数据磁盘区域绘制完成")
+
+    
+    def create_fallback_image(self, text="系统信息图片生成失败"):
+        try:
+            fb_img = Image.new('RGB', (600, 300), color=(26, 26, 46))
+            fb_draw = ImageDraw.Draw(fb_img)
+            fb_font = ImageFont.load_default()
+            fb_draw.text((20, 20), str(text), fill='#ffffff', font=fb_font)
+            buf = io.BytesIO()
+            fb_img.save(buf, format='PNG')
+            buf.seek(0)
+            return buf.getvalue()
+        except Exception as e:
+            logger.error(f"生成备用图片失败: {e}")
+            return b""
     
     @filter.command("sysinfo")
     async def sysinfo(self, event: AstrMessageEvent):
         """获取系统状态并生成图片""" 
         try:
             logger.info("开始获取系统信息")
-            
             # 获取系统信息
             system_info = self.get_system_info()
-            
-            # 获取AstrBot信息
-            astrbot_info = self.get_astrbot_info()
-            
             # 生成图片
-            img_data = self.create_system_info_image(system_info, astrbot_info)
-            
+            img_data = self.create_system_info_image(system_info)
+            logger.info(f"create_system_info_image返回类型: {type(img_data)}, 长度: {len(img_data) if isinstance(img_data, (bytes, bytearray)) else 'N/A'}")
+            # 保护：确保字节数据有效
+            if not isinstance(img_data, (bytes, bytearray)) or len(img_data) == 0:
+                logger.warning("图片数据无效或为空，生成备用图片")
+                img_data = self.create_fallback_image()
             # 保存图片到临时文件
             import tempfile
             import os
             with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
                 tmp_file.write(img_data)
                 tmp_file_path = tmp_file.name
-            
             try:
                 # 发送图片消息
                 yield event.chain_result([
-                    Plain("📊 系统状态监控报告 (含AstrBot数据)："),
+                    Plain("📊 系统状态监控报告："),
                     AstrImage.fromFileSystem(tmp_file_path)
                 ])
             finally:
                 # 清理临时文件
                 if os.path.exists(tmp_file_path):
                     os.unlink(tmp_file_path)
-            
             logger.info("系统信息图片发送成功")
-            
         except Exception as e:
             logger.error(f"获取系统信息时发生错误: {e}")
             yield event.plain_result(f"❌ 获取系统信息时发生错误: {str(e)}")
