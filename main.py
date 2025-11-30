@@ -836,62 +836,12 @@ class ImageGenerator:
         logger.info("页脚绘制完成")
     
     def generate_image(self, system_info):
-        """生成完整的系统信息图片，动态计算高度"""
+        """生成完整的系统信息图片，固定高度"""
         logger.info("开始生成系统信息图片")
         
-        # 预计算各部分高度，确定最终图片高度
-        logger.info("开始预计算图片高度")
-        
-        # 标题高度
-        title_bbox = self.fonts['title'].getbbox("系统状态监控")
-        title_height = title_bbox[3] + 50  # 标题本身高度 + 上下间距
-        
-        # 系统信息高度
-        try:
-            # 获取网络流量信息
-            net_io = psutil.net_io_counters()
-            network_traffic = self._format_network_traffic(net_io.bytes_sent, net_io.bytes_recv)
-            
-            # 格式化运行时间
-            uptime_formatted = self._format_uptime(system_info['uptime'])
-            
-            info_lines = [
-                f"系统信息: {system_info['system']} {system_info['release']}",
-                f"运行时间: {uptime_formatted}",
-                f"系统负载: {system_info['cpu_percent']:.2f}%, {system_info['memory_percent']:.1f}%, {system_info['disk_percent']:.1f}%",
-                f"网络流量: {network_traffic}",
-                f"当前时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            ]
-        except Exception as e:
-            logger.warning(f"生成系统信息列表时出错: {e}")
-            info_lines = ["系统信息获取失败"]
-        system_info_height = 80 + len(info_lines) * self.line_spacing + self.section_spacing
-        
-        # 性能监控高度
-        performance_height = 250 + self.section_spacing  # 与实际绘制使用的section_height保持一致
-        
-        # 磁盘信息高度
-        disk_partitions = system_info.get('disk_partitions', [])
-        data_disks = [d for d in disk_partitions if not d['is_system_disk']]
-        disks_to_show = data_disks
-        if not data_disks:
-            disks_to_show = disk_partitions[1:] if len(disk_partitions) > 1 else disk_partitions
-        disks_to_show = disks_to_show[:10]
-        if disks_to_show:
-            disk_height = 55  # 与实际绘制使用的disk_height保持一致
-            disk_info_height = 90 + len(disks_to_show) * disk_height + self.section_spacing
-        else:
-            disk_info_height = 100 + self.section_spacing
-        
-        # 页脚高度
-        footer_height = 40
-        
-        # 计算总高度
-        total_height = title_height + system_info_height + performance_height + disk_info_height + footer_height
-        
-        # 确保总高度不小于基础高度
-        final_height = max(total_height, self.base_height)
-        logger.info(f"预计算完成，总高度: {total_height}, 最终高度: {final_height}")
+        # 使用固定高度，确保所有用户生成的图片大小一致
+        final_height = 900  # 固定高度，适合各种系统信息展示
+        logger.info(f"使用固定图片高度: {final_height}")
         
         # 创建背景
         img, draw = self.create_background(final_height)
@@ -992,7 +942,7 @@ class ImageGenerator:
             logger.error(f"生成备用图片失败: {e}")
             return b""
 
-@register("sysinfoimg", "Binbim", "专注于系统硬件监控的插件，生成美观的系统状态图片", "v1.1.0")
+@register("sysinfoimg", "Binbim", "专注于系统硬件监控的插件，生成美观的系统状态图片", "v1.1.1")
 class SysInfoImgPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
