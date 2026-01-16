@@ -1,0 +1,4 @@
+# file: D:\Binbim\个人项目\astrbot_plugin_img-sysinfo\config_utils.py
+# hypothesis_version: 6.148.9
+
+['100% 100%', ';base64,', 'CPU', 'Disk Partitions', 'Memory', 'Network', 'No partitions', 'Powered by AstrBot', 'Swap', 'Top Processes', 'Total', 'contain', 'cover', 'cpu', 'data:', 'disk', 'en', 'file', 'fill', 'jpeg', 'memory', 'network', 'no_part', 'none', 'powered', 'rb', 'swap', 'top', 'total', 'url', 'zh', '交换内存', '内存', '总览', '无可用分区', '磁盘分区', '网络', '进程榜单']
