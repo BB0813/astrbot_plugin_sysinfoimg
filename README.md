@@ -96,5 +96,9 @@ sudo yum install wqy-microhei-fonts google-noto-cjk-fonts
 - [AstrBot 官方文档](https://astrbot.app)
 - [插件反馈群](https://qm.qq.com/q/d4lwUp9ap4)
 
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=BB0813/astrbot_plugin_sysinfoimg&type=date&legend=top-left)](https://www.star-history.com/#BB0813/astrbot_plugin_sysinfoimg&type=date&legend=top-left)
+
 ## 许可证
 本插件基于 GNU Affero General Public License v3.0 许可证开源。
