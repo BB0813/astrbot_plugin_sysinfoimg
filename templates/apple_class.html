@@ -1,0 +1,484 @@
+﻿<!DOCTYPE html>
+<html lang="{{ locale }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        :root {
+            --page-width: {{ page_width }}px;
+            --logical-height: {{ logical_height }}px;
+            --render-scale: {{ render_scale }};
+            --page-bg: {{ page_bg }};
+            --surface-bg: {{ surface_bg }};
+            --surface-alt: {{ surface_alt }};
+            --border-color: {{ border_color }};
+            --text-primary: {{ text_color }};
+            --text-muted: {{ muted_text_color }};
+            --accent-color: {{ accent_color }};
+            --accent-soft: {{ accent_soft }};
+            --shadow-color: {{ shadow_color }};
+            --chart-grid: {{ chart_grid }};
+            --font-family: "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "SimHei", "Segoe UI", sans-serif;
+        }
+
+        * { box-sizing: border-box; font-family: var(--font-family); }
+        html, body { margin: 0; padding: 0; }
+        body {
+            min-height: 100vh;
+            padding: 24px;
+            color: var(--text-primary);
+            background: var(--page-bg);
+            {% if bg_image %}
+            background-image: linear-gradient(180deg, rgba(10, 13, 29, 0.58), rgba(10, 13, 29, 0.74)), url("{{ bg_image }}");
+            background-size: cover, {{ background_fit_css }};
+            background-position: center, center;
+            background-repeat: no-repeat, no-repeat;
+            {% else %}
+            background-image: radial-gradient(circle at top right, rgba(124,108,255,0.20), transparent 24%), radial-gradient(circle at bottom left, rgba(83,122,255,0.12), transparent 28%), linear-gradient(180deg, var(--page-bg), {{ page_bg_end }});
+            {% endif %}
+        }
+
+        .page-stage {
+            width: calc(var(--page-width) * var(--render-scale));
+            min-height: calc(var(--logical-height) * var(--render-scale));
+            margin: 0 auto;
+        }
+
+        .page {
+            width: var(--page-width);
+            transform: scale(var(--render-scale));
+            transform-origin: top left;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .panel,
+        .metric-card {
+            background: var(--surface-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 22px;
+            box-shadow: 0 16px 48px var(--shadow-color);
+        }
+
+        .hero {
+            padding: 24px 26px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 20px;
+        }
+
+        .eyebrow {
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        h1 { margin: 0; font-size: 32px; line-height: 1.12; }
+        .subtitle { margin-top: 8px; color: var(--text-muted); font-size: 15px; line-height: 1.6; }
+        .hero-time {
+            flex-shrink: 0;
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid var(--border-color);
+            background: var(--surface-alt);
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .summary-grid,
+        .content-grid,
+        .system-grid {
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .metric-card {
+            grid-column: span 3;
+            padding: 18px 20px;
+            min-height: 132px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .metric-label,
+        .section-kicker,
+        .meta-label,
+        .rank-value,
+        .chart-tick,
+        .footer,
+        .top-note {
+            color: var(--text-muted);
+        }
+
+        .metric-label { font-size: 12px; font-weight: 700; }
+        .metric-value { font-size: 24px; font-weight: 800; line-height: 1.1; }
+        .top-note { font-size: 12px; line-height: 1.5; word-break: break-word; }
+
+        .section-title-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 12px;
+            margin-top: 4px;
+        }
+
+        .section-title { margin: 0; font-size: 19px; }
+        .section-kicker { font-size: 12px; font-weight: 700; }
+
+        .panel { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+        .span-8 { grid-column: span 8; }
+        .span-4 { grid-column: span 4; }
+        .span-12 { grid-column: span 12; }
+
+        .chart-shell {
+            border-radius: 18px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.24), rgba(255,255,255,0.08));
+            border: 1px solid rgba(255,255,255,0.28);
+            padding: 14px;
+        }
+
+        .chart-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .chart-title { font-size: 15px; font-weight: 700; }
+        .chart-total { font-size: 30px; font-weight: 800; }
+        .line-chart { width: 100%; height: auto; display: block; }
+        .chart-grid-line { stroke: var(--chart-grid); stroke-width: 1; }
+        .chart-area { fill: var(--accent-soft); }
+        .chart-line { fill: none; stroke: var(--accent-color); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+        .chart-point { fill: #fff; stroke: var(--accent-color); stroke-width: 2; }
+
+        .tick-row {
+            display: grid;
+            grid-template-columns: repeat({{ message_chart.ticks|length if message_chart.ticks else 1 }}, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .chart-tick {
+            font-size: 11px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .rank-list,
+        .meta-list,
+        .token-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .rank-row,
+        .meta-row {
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: var(--surface-alt);
+            border: 1px solid rgba(255,255,255,0.28);
+        }
+
+        .rank-row { display: flex; flex-direction: column; gap: 8px; }
+        .rank-top,
+        .token-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+        .rank-name,
+        .token-name { font-size: 14px; font-weight: 700; word-break: break-word; }
+
+        .progress {
+            width: 100%;
+            height: 7px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(99,102,241,0.08);
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--accent-color), #7dd3fc);
+        }
+
+        .meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .meta-value { font-size: 14px; font-weight: 700; text-align: right; word-break: break-word; }
+
+        .token-bars {
+            height: 280px;
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            padding-top: 12px;
+        }
+
+        .token-bar-wrap {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .token-bar {
+            width: 100%;
+            border-radius: 12px 12px 6px 6px;
+            min-height: 6px;
+            background: linear-gradient(180deg, rgba(79,70,229,0.72), rgba(79,70,229,0.26));
+            border: 1px solid rgba(79,70,229,0.20);
+        }
+
+        .token-label {
+            width: 100%;
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .empty-state {
+            padding: 26px 18px;
+            border-radius: 16px;
+            background: var(--surface-alt);
+            color: var(--text-muted);
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .footer { font-size: 12px; text-align: left; padding: 4px 4px 0; }
+    </style>
+</head>
+<body>
+    <div class="page-stage">
+        <main class="page">
+            <section class="panel hero">
+                <div>
+                    <div class="eyebrow">{{ layout_hint }}</div>
+                    <h1>{{ title }}</h1>
+                    <div class="subtitle">{{ subtitle }}</div>
+                </div>
+                <div class="hero-time">{{ timestamp_text }}</div>
+            </section>
+
+            <section class="summary-grid">
+                {% for card in summary_cards %}
+                <article class="metric-card">
+                    <div class="metric-label">{{ card.label }}</div>
+                    <div class="metric-value">{{ card.value }}</div>
+                    <div class="top-note">{{ card.note }}</div>
+                </article>
+                {% endfor %}
+            </section>
+
+            <div class="section-title-row">
+                <div>
+                    <div class="section-kicker">{{ message_overview }}</div>
+                    <h2 class="section-title">{{ message_trend }}</h2>
+                </div>
+            </div>
+
+            <section class="content-grid">
+                <article class="panel span-8">
+                    <div class="chart-shell">
+                        <div class="chart-head">
+                            <div>
+                                <div class="chart-title">{{ message_trend }}</div>
+                                <div class="section-kicker">{{ messages_24h }}</div>
+                            </div>
+                            <div class="chart-total">{{ message_total }}</div>
+                        </div>
+                        <svg class="line-chart" viewBox="0 0 {{ message_chart.width }} {{ message_chart.height }}" preserveAspectRatio="none">
+                            <line class="chart-grid-line" x1="18" y1="16" x2="18" y2="194"></line>
+                            <line class="chart-grid-line" x1="18" y1="194" x2="602" y2="194"></line>
+                            {% if message_chart.area_points %}<polygon class="chart-area" points="{{ message_chart.area_points }}"></polygon>{% endif %}
+                            {% if message_chart.points %}<polyline class="chart-line" points="{{ message_chart.points }}"></polyline>{% endif %}
+                            {% for point in message_chart.points_data %}<circle class="chart-point" cx="{{ point.x }}" cy="{{ point.y }}" r="3"></circle>{% endfor %}
+                        </svg>
+                        {% if message_chart.ticks %}
+                        <div class="tick-row">{% for tick in message_chart.ticks %}<div class="chart-tick">{{ tick }}</div>{% endfor %}</div>
+                        {% endif %}
+                    </div>
+                </article>
+
+                <article class="panel span-4">
+                    <div>
+                        <div class="section-kicker">{{ message_overview }}</div>
+                        <h2 class="section-title">{{ platform_ranking }}</h2>
+                    </div>
+                    {% if platform_ranking_rows %}
+                    <div class="rank-list">
+                        {% for row in platform_ranking_rows %}
+                        <div class="rank-row">
+                            <div class="rank-top">
+                                <div class="rank-name">{{ row.name }}</div>
+                                <div class="rank-value">{{ row.value }}</div>
+                            </div>
+                            <div class="progress"><div class="progress-fill" style="width: {{ row.ratio }}%;"></div></div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="empty-state">{{ no_data }}</div>
+                    {% endif %}
+                </article>
+            </section>
+
+            <div class="section-title-row">
+                <div>
+                    <div class="section-kicker">{{ model_usage }}</div>
+                    <h2 class="section-title">{{ token_trend }}</h2>
+                </div>
+            </div>
+
+            <section class="content-grid">
+                <article class="panel span-12">
+                    <div class="chart-shell">
+                        <div class="chart-head">
+                            <div>
+                                <div class="chart-title">{{ token_trend }}</div>
+                                <div class="section-kicker">{{ tokens_24h }}</div>
+                            </div>
+                            <div class="chart-total">{{ token_total }}</div>
+                        </div>
+                        {% if token_chart_bars %}
+                        <div class="token-bars">
+                            {% for bar in token_chart_bars %}
+                            <div class="token-bar-wrap">
+                                <div class="token-bar" style="height: {{ bar.height }}%;"></div>
+                                <div class="token-label">{{ bar.label }}</div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="empty-state">{{ no_data }}</div>
+                        {% endif %}
+                    </div>
+                </article>
+            </section>
+
+            <section class="panel span-12">
+                <div>
+                    <div class="section-kicker">{{ model_usage }}</div>
+                    <h2 class="section-title">{{ recent_tokens }}</h2>
+                </div>
+                {% if token_top %}
+                <div class="token-list">
+                    {% for row in token_top %}
+                    <div class="rank-row">
+                        <div class="token-top">
+                            <div class="token-name">{{ row.name }}</div>
+                            <div class="rank-value">{{ row.value }}</div>
+                        </div>
+                        <div class="progress"><div class="progress-fill" style="width: {{ row.ratio }}%;"></div></div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">{{ no_data }}</div>
+                {% endif %}
+            </section>
+
+            <div class="section-title-row">
+                <div>
+                    <div class="section-kicker">{{ system_status }}</div>
+                    <h2 class="section-title">{{ basic_info }}</h2>
+                </div>
+            </div>
+
+            <section class="summary-grid">
+                {% for card in system_metric_cards %}
+                <article class="metric-card">
+                    <div class="metric-label">{{ card.label }}</div>
+                    <div class="metric-value">{{ card.value }}</div>
+                    <div class="top-note">{{ card.note }}</div>
+                </article>
+                {% endfor %}
+            </section>
+
+            <section class="system-grid">
+                <article class="panel span-4">
+                    <div>
+                        <div class="section-kicker">{{ basic_info }}</div>
+                        <h2 class="section-title">{{ system_status }}</h2>
+                    </div>
+                    <div class="meta-list">
+                        {% for row in info_rows %}
+                        <div class="meta-row">
+                            <div class="meta-label">{{ row.label }}</div>
+                            <div class="meta-value">{{ row.value }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </article>
+
+                <article class="panel span-4">
+                    <div>
+                        <div class="section-kicker">{{ disk }}</div>
+                        <h2 class="section-title">{{ disk_usage }}</h2>
+                    </div>
+                    {% if disk_rows %}
+                    <div class="rank-list">
+                        {% for row in disk_rows %}
+                        <div class="rank-row">
+                            <div class="rank-top">
+                                <div class="rank-name">{{ row.name }}</div>
+                                <div class="rank-value">{{ row.percent }}%</div>
+                            </div>
+                            <div class="top-note">{{ row.note }} / {{ row.value }}</div>
+                            <div class="progress"><div class="progress-fill" style="width: {{ row.percent }}%;"></div></div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="empty-state">{{ no_partitions }}</div>
+                    {% endif %}
+                </article>
+
+                <article class="panel span-4">
+                    <div>
+                        <div class="section-kicker">{{ top_processes }}</div>
+                        <h2 class="section-title">{{ system_status }}</h2>
+                    </div>
+                    {% if process_rows %}
+                    <div class="token-list">
+                        {% for row in process_rows %}
+                        <div class="rank-row">
+                            <div class="token-top">
+                                <div class="token-name">{{ row.name }}</div>
+                                <div class="rank-value">{{ row.value }}</div>
+                            </div>
+                            <div class="top-note">{{ row.note }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="empty-state">{{ no_data }}</div>
+                    {% endif %}
+                </article>
+            </section>
+
+            <div class="footer">{{ footer_text }} / {{ generated }} {{ generated_text }}</div>
+        </main>
+    </div>
+</body>
+</html>

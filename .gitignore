@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Test cache
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local build / release
+release_upload_*/
+
+# Local images or temp files
+*.log

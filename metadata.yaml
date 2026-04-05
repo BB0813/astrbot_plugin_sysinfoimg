@@ -1,5 +1,6 @@
-name: sysinfoimg
-desc: 专注于系统硬件监控的插件，生成美观的系统状态图片，轻量高效
-version: v2.0.0
-author: Binbim
+﻿name: astrbot_plugin_img-sysinfo
+desc: 专注于系统状态与稳定统计图片生成的 AstrBot 插件，高分辨率、轻量、适合聊天场景
+version: V2.5.0
+author: BB0813
 repo: https://github.com/BB0813/astrbot_plugin_sysinfoimg
+alias: 系统状态
