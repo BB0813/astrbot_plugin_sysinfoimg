@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-README_TARGETS = [ROOT / "README.md", ROOT / "astrbot_plugin_sysinfoimg" / "README.md"]
+README_TARGETS = [path for path in [ROOT / "README.md", ROOT / "astrbot_plugin_sysinfoimg" / "README.md"] if path.exists()]
 CONTRIBUTORS_MD = ROOT / "CONTRIBUTORS.md"
 START = "<!-- CONTRIBUTORS:START -->"
 END = "<!-- CONTRIBUTORS:END -->"
@@ -71,7 +71,7 @@ def main() -> None:
     rows = run_git_shortlog()
     replacement = render_readme_section(rows)
     for target in README_TARGETS:
-        text = target.read_text(encoding="utf-8")
+        text = target.read_text(encoding="utf-8-sig")
         target.write_text(replace_between_markers(text, replacement), encoding="utf-8")
     write_contributors_md(rows)
 

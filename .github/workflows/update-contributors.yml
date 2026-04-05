@@ -31,7 +31,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md astrbot_plugin_sysinfoimg/README.md CONTRIBUTORS.md
+          git add README.md CONTRIBUTORS.md scripts/update_contributors.py .github/workflows/update-contributors.yml
+          if [ -f astrbot_plugin_sysinfoimg/README.md ]; then git add astrbot_plugin_sysinfoimg/README.md; fi
           git diff --cached --quiet && exit 0
           git commit -m "docs: update contributors"
           git push

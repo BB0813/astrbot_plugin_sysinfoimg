@@ -1,4 +1,4 @@
-﻿# AstrBot 图片系统状态插件 / AstrBot Image Sysinfo
+# AstrBot 图片系统状态插件 / AstrBot Image Sysinfo
 
 > 面向 AstrBot 的高分辨率系统状态与稳定统计图片插件。  
 > A high-resolution system status and stable statistics image plugin for AstrBot.
