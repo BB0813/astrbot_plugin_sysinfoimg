@@ -71,8 +71,8 @@ This repository already includes automatic contributor maintenance:
 <!-- CONTRIBUTORS:START -->
 - Soulter - 32 commits
 - Binbim_ProMax - 11 commits
+- github-actions[bot] - 5 commits
 - BB0813 - 4 commits
-- github-actions[bot] - 4 commits
 - EIA - 1 commits
 <!-- CONTRIBUTORS:END -->
 
