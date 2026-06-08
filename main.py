@@ -13,18 +13,60 @@ import re
 import sys
 from typing import Any, Dict, List, Optional
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if CURRENT_DIR not in sys.path:
+    sys.path.insert(0, CURRENT_DIR)
 
-from monitor import collect_system_info
-from dashboard_runtime import build_dashboard_render_data
-from utils import (
-    fmt_duration,
-    fmt_rate,
-    get_labels,
-    install_chinese_fonts,
-    merge_config,
-    resolve_background,
+try:
+    from .monitor import collect_system_info
+    from . import dashboard_runtime as dashboard_runtime_module
+    from .utils import (
+        fmt_duration,
+        fmt_rate,
+        get_labels,
+        check_chinese_fonts,
+        merge_config,
+        resolve_background,
+    )
+except ImportError:
+    from monitor import collect_system_info
+    import dashboard_runtime as dashboard_runtime_module
+    from utils import (
+        fmt_duration,
+        fmt_rate,
+        get_labels,
+        check_chinese_fonts,
+        merge_config,
+        resolve_background,
+    )
+
+build_dashboard_render_data = dashboard_runtime_module.build_dashboard_render_data
+collect_astrbot_dashboard_stats = dashboard_runtime_module.collect_astrbot_dashboard_stats
+build_stats_diagnostics_payload = getattr(
+    dashboard_runtime_module,
+    "build_stats_diagnostics_payload",
+    None,
 )
+
+if not callable(build_stats_diagnostics_payload):
+    logger.warning(
+        "dashboard_runtime.build_stats_diagnostics_payload not found; "
+        "using fallback diagnostics payload."
+    )
+
+    def build_stats_diagnostics_payload(stats: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(stats, dict):
+            return {
+                "ok": False,
+                "data_sources": {},
+                "warning": "dashboard_runtime.py version mismatch",
+            }
+
+        return {
+            "ok": bool(stats),
+            "data_sources": stats.get("data_sources") or {},
+            "warning": "dashboard_runtime.py version mismatch",
+        }
 
 THEME_PRESETS = {
     "custom_dashboard": {
@@ -196,7 +238,7 @@ class ImgSysInfoPlugin(Star):
         self.auto_tasks: Dict[str, Dict[str, Any]] = {}
         self.last_run: Dict[str, float] = {}
         self._load_tasks()
-        install_chinese_fonts()
+        check_chinese_fonts()
         asyncio.create_task(self._scheduler_loop())
 
     def _load_tasks(self):
@@ -244,12 +286,14 @@ class ImgSysInfoPlugin(Star):
             str(cfg.get("background_fit", "cover")),
         )
 
+        umo = str(event_or_umo.unified_msg_origin) if hasattr(event_or_umo, "unified_msg_origin") else str(event_or_umo)
         render_data = await build_dashboard_render_data(
             self.context,
             cfg,
             title=title,
             bg_image=bg_image,
             background_fit_css=background_fit_css,
+            umo=umo,
         )
 
         template_path = os.path.join(os.path.dirname(__file__), "templates", "apple_class.html")
@@ -278,7 +322,7 @@ class ImgSysInfoPlugin(Star):
         async for result in self._handle_sysinfo(event, title):
             yield result
 
-    @filter.regex(r"^[\/!！\.]?(系统状态|系统状态面板)(?:\s+(.*))?$")
+    @filter.regex("^[\/!！\.]?(?:系统状态|系统状态面板)(?:\s+(.*))?$")
     async def sysinfo_regex(self, event: AstrMessageEvent):
         msg = event.message_str.strip()
         match = re.match(r"^[\/!！\.]?(?:系统状态|系统状态面板)(?:\s+(.*))?$", msg)
@@ -301,7 +345,8 @@ class ImgSysInfoPlugin(Star):
 
     async def _handle_sysinfo_auto(self, event: AstrMessageEvent, interval: str = ""):
         if not interval:
-            yield event.plain_result("请提供间隔分钟数，例如：sysinfo_auto 60。输入 off 关闭。")
+            help_text = str(self._get_cfg(event).get("sysinfo_auto_help", "")).strip()
+            yield event.plain_result(help_text or "请提供间隔分钟数，例如：sysinfo_auto 60。输入 off 关闭。")
             return
 
         self._reload_settings()
@@ -416,6 +461,21 @@ class ImgSysInfoPlugin(Star):
     async def sysinfo_disks_regex(self, event: AstrMessageEvent):
         async for result in self._handle_sysinfo_disks(event):
             yield result
+
+    @filter.command("sysinfo_stats_diag")
+    async def sysinfo_stats_diag(self, event: AstrMessageEvent):
+        async for result in self._handle_sysinfo_stats_diag(event):
+            yield result
+
+    @filter.regex(r"^[\/!！\.]?系统状态统计诊断$")
+    async def sysinfo_stats_diag_regex(self, event: AstrMessageEvent):
+        async for result in self._handle_sysinfo_stats_diag(event):
+            yield result
+
+    async def _handle_sysinfo_stats_diag(self, event: AstrMessageEvent):
+        stats = await collect_astrbot_dashboard_stats(self.context, hours=24, umo=str(event.unified_msg_origin))
+        payload = build_stats_diagnostics_payload(stats)
+        yield event.plain_result(json.dumps(payload, ensure_ascii=False, indent=2))
 
     async def _handle_sysinfo_disks(self, event: AstrMessageEvent):
         from monitor import list_disks, norm_mounts

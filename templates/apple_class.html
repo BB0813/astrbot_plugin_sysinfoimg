@@ -137,6 +137,7 @@
 
         .panel { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
         .span-8 { grid-column: span 8; }
+        .span-6 { grid-column: span 6; }
         .span-4 { grid-column: span 4; }
         .span-12 { grid-column: span 12; }
 
@@ -209,7 +210,7 @@
         .progress-fill {
             height: 100%;
             border-radius: inherit;
-            background: linear-gradient(90deg, var(--accent-color), #7dd3fc);
+            background: linear-gradient(90deg, var(--progress-color, var(--accent-color)), #7dd3fc);
         }
 
         .meta-row {
@@ -242,7 +243,7 @@
             width: 100%;
             border-radius: 12px 12px 6px 6px;
             min-height: 6px;
-            background: linear-gradient(180deg, rgba(79,70,229,0.72), rgba(79,70,229,0.26));
+            background: linear-gradient(180deg, var(--bar-color, rgba(79,70,229,0.72)), rgba(79,70,229,0.26));
             border: 1px solid rgba(79,70,229,0.20);
         }
 
@@ -265,7 +266,9 @@
             font-size: 14px;
         }
 
-        .footer { font-size: 12px; text-align: left; padding: 4px 4px 0; }
+        .footer { font-size: 12px; padding: 4px 4px 0; }
+        .footer-left { text-align: left; }
+        .footer-right { text-align: right; }
     </style>
 </head>
 <body>
@@ -277,7 +280,7 @@
                     <h1>{{ title }}</h1>
                     <div class="subtitle">{{ subtitle }}</div>
                 </div>
-                <div class="hero-time">{{ timestamp_text }}</div>
+                {% if show_time_badge %}<div class="hero-time">{{ timestamp_text }}</div>{% endif %}
             </section>
 
             <section class="summary-grid">
@@ -286,6 +289,9 @@
                     <div class="metric-label">{{ card.label }}</div>
                     <div class="metric-value">{{ card.value }}</div>
                     <div class="top-note">{{ card.note }}</div>
+                    {% if card.progress is defined and card.progress is not none %}
+                    <div class="progress"><div class="progress-fill" style="width: {{ card.progress }}%; --progress-color: {{ card.progress_color or accent_color }};"></div></div>
+                    {% endif %}
                 </article>
                 {% endfor %}
             </section>
@@ -333,7 +339,7 @@
                                 <div class="rank-name">{{ row.name }}</div>
                                 <div class="rank-value">{{ row.value }}</div>
                             </div>
-                            <div class="progress"><div class="progress-fill" style="width: {{ row.ratio }}%;"></div></div>
+                            <div class="progress"><div class="progress-fill" style="width: {{ row.ratio }}%; --progress-color: {{ row.progress_color or accent_color }};"></div></div>
                         </div>
                         {% endfor %}
                     </div>
@@ -364,7 +370,7 @@
                         <div class="token-bars">
                             {% for bar in token_chart_bars %}
                             <div class="token-bar-wrap">
-                                <div class="token-bar" style="height: {{ bar.height }}%;"></div>
+                                <div class="token-bar" style="height: {{ bar.height }}%; --bar-color: {{ bar.color or accent_color }};"></div>
                                 <div class="token-label">{{ bar.label }}</div>
                             </div>
                             {% endfor %}
@@ -389,7 +395,7 @@
                             <div class="token-name">{{ row.name }}</div>
                             <div class="rank-value">{{ row.value }}</div>
                         </div>
-                        <div class="progress"><div class="progress-fill" style="width: {{ row.ratio }}%;"></div></div>
+                        <div class="progress"><div class="progress-fill" style="width: {{ row.ratio }}%; --progress-color: {{ row.progress_color or accent_color }};"></div></div>
                     </div>
                     {% endfor %}
                 </div>
@@ -411,12 +417,15 @@
                     <div class="metric-label">{{ card.label }}</div>
                     <div class="metric-value">{{ card.value }}</div>
                     <div class="top-note">{{ card.note }}</div>
+                    {% if card.progress is defined and card.progress is not none %}
+                    <div class="progress"><div class="progress-fill" style="width: {{ card.progress }}%; --progress-color: {{ card.progress_color or accent_color }};"></div></div>
+                    {% endif %}
                 </article>
                 {% endfor %}
             </section>
 
             <section class="system-grid">
-                <article class="panel span-4">
+                <article class="panel {{ info_panel_span }}">
                     <div>
                         <div class="section-kicker">{{ basic_info }}</div>
                         <h2 class="section-title">{{ system_status }}</h2>
@@ -431,7 +440,8 @@
                     </div>
                 </article>
 
-                <article class="panel span-4">
+                {% if show_disk_panel %}
+                <article class="panel {{ disk_panel_span }}">
                     <div>
                         <div class="section-kicker">{{ disk }}</div>
                         <h2 class="section-title">{{ disk_usage }}</h2>
@@ -439,35 +449,42 @@
                     {% if disk_rows %}
                     <div class="rank-list">
                         {% for row in disk_rows %}
+                        {% if row.is_placeholder %}
+                        <div class="empty-state">{{ row.name }}{% if row.note %} / {{ row.note }}{% endif %}</div>
+                        {% else %}
                         <div class="rank-row">
                             <div class="rank-top">
                                 <div class="rank-name">{{ row.name }}</div>
                                 <div class="rank-value">{{ row.percent }}%</div>
                             </div>
                             <div class="top-note">{{ row.note }} / {{ row.value }}</div>
-                            <div class="progress"><div class="progress-fill" style="width: {{ row.percent }}%;"></div></div>
+                            <div class="progress"><div class="progress-fill" style="width: {{ row.percent }}%; --progress-color: {{ row.progress_color or accent_color }};"></div></div>
                         </div>
+                        {% endif %}
                         {% endfor %}
                     </div>
                     {% else %}
                     <div class="empty-state">{{ no_partitions }}</div>
                     {% endif %}
                 </article>
+                {% endif %}
 
-                <article class="panel span-4">
+                {% if bottom_panel %}
+                <article class="panel {{ bottom_panel_span }}">
                     <div>
-                        <div class="section-kicker">{{ top_processes }}</div>
-                        <h2 class="section-title">{{ system_status }}</h2>
+                        <div class="section-kicker">{{ bottom_panel.kicker }}</div>
+                        <h2 class="section-title">{{ bottom_panel.title }}</h2>
                     </div>
-                    {% if process_rows %}
+                    {% if bottom_panel.rows %}
                     <div class="token-list">
-                        {% for row in process_rows %}
+                        {% for row in bottom_panel.rows %}
                         <div class="rank-row">
                             <div class="token-top">
                                 <div class="token-name">{{ row.name }}</div>
                                 <div class="rank-value">{{ row.value }}</div>
                             </div>
-                            <div class="top-note">{{ row.note }}</div>
+                            {% if row.note %}<div class="top-note">{{ row.note }}</div>{% endif %}
+                            {% if row.ratio is defined %}<div class="progress"><div class="progress-fill" style="width: {{ row.ratio }}%; --progress-color: {{ row.progress_color or accent_color }};"></div></div>{% endif %}
                         </div>
                         {% endfor %}
                     </div>
@@ -475,9 +492,10 @@
                     <div class="empty-state">{{ no_data }}</div>
                     {% endif %}
                 </article>
+                {% endif %}
             </section>
 
-            <div class="footer">{{ footer_text }} / {{ generated }} {{ generated_text }}</div>
+            <div class="{{ footer_class }}">{{ footer_text }} / {{ generated }} {{ generated_text }}</div>
         </main>
     </div>
 </body>

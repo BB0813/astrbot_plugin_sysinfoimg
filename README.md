@@ -3,7 +3,7 @@
 > 面向 AstrBot 的高分辨率系统状态与稳定统计图片插件。  
 > A high-resolution system status and stable statistics image plugin for AstrBot.
 
-![Version](https://img.shields.io/badge/version-V2.5.0-7c6cff)
+![Version](https://img.shields.io/badge/version-V2.5.1-7c6cff)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![AstrBot](https://img.shields.io/badge/AstrBot-plugin-6ea8ff)
 

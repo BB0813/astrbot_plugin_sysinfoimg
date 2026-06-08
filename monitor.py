@@ -2,9 +2,18 @@ import psutil
 import os
 import asyncio
 import platform
+import sys
 from typing import List, Dict, Tuple, Optional, Any
 from astrbot.api import logger
-from utils import fmt_bytes, fmt_rate, detect_linux_distro
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if CURRENT_DIR not in sys.path:
+    sys.path.insert(0, CURRENT_DIR)
+
+try:
+    from .utils import fmt_bytes, fmt_rate, detect_linux_distro
+except ImportError:
+    from utils import fmt_bytes, fmt_rate, detect_linux_distro
 
 def norm_mounts(parts_cfg: List[str]) -> List[str]:
     """Normalize mount points for different OS."""

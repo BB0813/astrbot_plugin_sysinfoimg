@@ -39,75 +39,59 @@ def detect_linux_distro() -> str:
         logger.warning(f"Failed to detect Linux distro: {e}")
         return 'unknown'
 
-def install_chinese_fonts():
-    """Install Chinese fonts on Linux if missing."""
+COMMON_CHINESE_FONT_PATHS = [
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+]
+
+FONT_PACKAGES_BY_DISTRO = {
+    'ubuntu': ['fonts-wqy-microhei', 'fonts-wqy-zenhei', 'fonts-noto-cjk'],
+    'debian': ['fonts-wqy-microhei', 'fonts-wqy-zenhei', 'fonts-noto-cjk'],
+    'linuxmint': ['fonts-wqy-microhei', 'fonts-wqy-zenhei', 'fonts-noto-cjk'],
+    'fedora': ['wqy-microhei-fonts', 'wqy-zenhei-fonts', 'google-noto-cjk-fonts-common'],
+    'centos': ['wqy-microhei-fonts', 'wqy-zenhei-fonts', 'google-noto-cjk-fonts-common'],
+    'redhat': ['wqy-microhei-fonts', 'wqy-zenhei-fonts', 'google-noto-cjk-fonts-common'],
+    'opensuse': ['wqy-microhei-fonts', 'wqy-zenhei-fonts', 'google-noto-cjk-fonts'],
+    'arch': ['ttf-wqy-microhei', 'ttf-wqy-zenhei', 'noto-fonts-cjk'],
+}
+
+
+def _recommended_font_packages(distro: str) -> str:
+    packages = FONT_PACKAGES_BY_DISTRO.get(distro, [])
+    return ' '.join(packages)
+
+
+def check_chinese_fonts():
+    """Log a warning on Linux when common Chinese fonts appear to be missing."""
     if platform.system() == "Windows":
         return
 
     try:
         distro = detect_linux_distro()
         logger.info(f"Detected Linux distro for font check: {distro}")
-
-        common_paths = [
-            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-            "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-        ]
-        if any(os.path.exists(p) for p in common_paths):
+        if any(os.path.exists(path) for path in COMMON_CHINESE_FONT_PATHS):
             logger.info("Chinese fonts seem to be present.")
             return
 
-        install_commands = {
-            'ubuntu': ['apt-get', 'update', '-y'],
-            'debian': ['apt-get', 'update', '-y'],
-            'linuxmint': ['apt-get', 'update', '-y'],
-            'fedora': ['dnf', 'update', '-y'],
-            'centos': ['yum', 'update', '-y'],
-            'redhat': ['yum', 'update', '-y'],
-            'opensuse': ['zypper', 'refresh'],
-            'arch': ['pacman', '-Syu', '--noconfirm'],
-        }
-
-        font_packages = {
-            'ubuntu': ['fonts-wqy-microhei', 'fonts-wqy-zenhei', 'fonts-noto-cjk'],
-            'debian': ['fonts-wqy-microhei', 'fonts-wqy-zenhei', 'fonts-noto-cjk'],
-            'linuxmint': ['fonts-wqy-microhei', 'fonts-wqy-zenhei', 'fonts-noto-cjk'],
-            'fedora': ['wqy-microhei-fonts', 'wqy-zenhei-fonts', 'google-noto-cjk-fonts-common'],
-            'centos': ['wqy-microhei-fonts', 'wqy-zenhei-fonts', 'google-noto-cjk-fonts-common'],
-            'redhat': ['wqy-microhei-fonts', 'wqy-zenhei-fonts', 'google-noto-cjk-fonts-common'],
-            'opensuse': ['wqy-microhei-fonts', 'wqy-zenhei-fonts', 'google-noto-cjk-fonts'],
-            'arch': ['ttf-wqy-microhei', 'ttf-wqy-zenhei', 'noto-fonts-cjk'],
-        }
-
-        if distro in install_commands and distro in font_packages:
-            logger.info(f"Attempting to install fonts for {distro}...")
-            subprocess.run(install_commands[distro], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-            pkgs = font_packages[distro]
-            if distro in ['ubuntu', 'debian', 'linuxmint']:
-                cmd = ['apt-get', 'install', '-y'] + pkgs
-            elif distro == 'fedora':
-                cmd = ['dnf', 'install', '-y'] + pkgs
-            elif distro in ['centos', 'redhat']:
-                cmd = ['yum', 'install', '-y'] + pkgs
-            elif distro == 'opensuse':
-                cmd = ['zypper', 'install', '-y'] + pkgs
-            else:
-                cmd = ['pacman', '-S', '--noconfirm'] + pkgs
-
-            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            logger.info("Fonts installed successfully.")
-
-            try:
-                subprocess.run(['fc-cache', '-fv'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            except Exception:
-                pass
+        package_hint = _recommended_font_packages(distro)
+        if package_hint:
+            logger.warning(
+                "Chinese fonts were not detected. Please install them manually before rendering, for example: %s",
+                package_hint,
+            )
         else:
-            logger.warning(f"Automatic font installation not supported for {distro}")
-
+            logger.warning(
+                "Chinese fonts were not detected. Please install a CJK font package manually before rendering.",
+            )
     except Exception as e:
-        logger.warning(f"Font installation failed: {e}")
+        logger.warning(f"Chinese font check failed: {e}")
+
+
+def install_chinese_fonts():
+    """Backward-compatible alias that now only checks font availability."""
+    check_chinese_fonts()
 
 def fmt_bytes(n: int) -> str:
     """Format bytes to human-readable string."""
