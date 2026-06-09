@@ -138,15 +138,11 @@ This repository already includes automatic contributor maintenance:
   Update timing: manual trigger, push to `main` / `master`, and weekly schedule
 
 <!-- CONTRIBUTORS:START -->
-<<<<<<< HEAD
-- Binbim_ProMax - 10 commits
-=======
 - Soulter - 32 commits
-- github-actions[bot] - 12 commits
+- github-actions[bot] - 13 commits
 - Binbim_ProMax - 11 commits
-- BB0813 - 5 commits
+- BB0813 - 7 commits
 - EIA - 1 commits
->>>>>>> 3e771dfc97ff4d8c9c3fc515005c537cae98c17c
 <!-- CONTRIBUTORS:END -->
 
 完整贡献者表见 `CONTRIBUTORS.md`。  
