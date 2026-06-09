@@ -216,7 +216,8 @@
       "none",
       "net_ifaces",
       "processes",
-      "summary"
+      "summary",
+      "deep_host"
     ],
     "default": "processes"
   },
@@ -233,6 +234,126 @@
     "description": "显示进程用户",
     "type": "bool",
     "default": true
+  },
+  "enable_deep_host_metrics": {
+    "description": "??????????",
+    "type": "bool",
+    "default": true
+  },
+  "show_battery_card": {
+    "description": "??????",
+    "type": "bool",
+    "default": true
+  },
+  "show_temperature_card": {
+    "description": "??????",
+    "type": "bool",
+    "default": true
+  },
+  "show_gpu_card": {
+    "description": "?? GPU ??",
+    "type": "bool",
+    "default": true
+  },
+  "show_container_card": {
+    "description": "??????",
+    "type": "bool",
+    "default": true
+  },
+  "alert_gpu_percent": {
+    "description": "GPU ?????0 ????",
+    "type": "int",
+    "default": 95
+  },
+  "alert_temperature_c": {
+    "description": "????????????0 ????",
+    "type": "int",
+    "default": 85
+  },
+  "alert_battery_percent": {
+    "description": "Battery alert threshold while discharging, 0 to disable",
+    "type": "int",
+    "default": 0
+  },
+  "alert_container_stopped": {
+    "description": "Stopped container count threshold, 0 to disable",
+    "type": "int",
+    "default": 0
+  },
+  "enable_system_history": {
+    "description": "开启本地系统历史采样",
+    "type": "bool",
+    "default": true
+  },
+  "show_system_history_panel": {
+    "description": "在主看板中显示系统历史趋势",
+    "type": "bool",
+    "default": true
+  },
+  "history_sample_minutes": {
+    "description": "本地历史采样间隔（分钟）",
+    "type": "int",
+    "default": 5
+  },
+  "history_retention_hours": {
+    "description": "历史采样保留时长（小时）",
+    "type": "int",
+    "default": 72
+  },
+  "history_chart_hours": {
+    "description": "趋势图默认展示窗口（小时）",
+    "type": "int",
+    "default": 24
+  },
+  "history_chart_points": {
+    "description": "趋势图最大采样点数",
+    "type": "int",
+    "default": 36
+  },
+  "history_alert_context_hours": {
+    "description": "告警附加趋势文脉的回看时间（小时）",
+    "type": "int",
+    "default": 1
+  },
+  "alert_cpu_percent": {
+    "description": "CPU 告警阈值，0 表示禁用",
+    "type": "int",
+    "default": 85
+  },
+  "alert_memory_percent": {
+    "description": "内存告警阈值，0 表示禁用",
+    "type": "int",
+    "default": 90
+  },
+  "alert_disk_percent": {
+    "description": "磁盘告警阈值，按总览或最高分区判断，0 表示禁用",
+    "type": "int",
+    "default": 90
+  },
+  "alert_swap_percent": {
+    "description": "Swap 告警阈值，0 表示禁用",
+    "type": "int",
+    "default": 80
+  },
+  "alert_cooldown_minutes": {
+    "description": "告警重复发送冷却分钟数",
+    "type": "int",
+    "default": 120
+  },
+  "alert_send_recovery": {
+    "description": "指标恢复后发送恢复提示",
+    "type": "bool",
+    "default": true
+  },
+  "alert_with_image": {
+    "description": "触发告警时附带系统状态图片",
+    "type": "bool",
+    "default": true
+  },
+  "sysinfo_alert_help": {
+    "description": "阈值告警命令说明",
+    "type": "string",
+    "default": "请在群聊中使用 /sysinfo_alert <分钟> 开启阈值告警，输入 status 查看当前会话状态，输入 off 关闭。告警阈值由插件配置决定。"
   },
   "sysinfo_auto_help": {
     "description": "定时发送说明",

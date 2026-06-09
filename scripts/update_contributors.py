@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-README_TARGETS = [path for path in [ROOT / "README.md", ROOT / "astrbot_plugin_sysinfoimg" / "README.md"] if path.exists()]
+README_TARGETS = [path for path in [ROOT / "README.md", ROOT / "archive" / "astrbot_plugin_sysinfoimg" / "README.md"] if path.exists()]
 CONTRIBUTORS_MD = ROOT / "CONTRIBUTORS.md"
 START = "<!-- CONTRIBUTORS:START -->"
 END = "<!-- CONTRIBUTORS:END -->"

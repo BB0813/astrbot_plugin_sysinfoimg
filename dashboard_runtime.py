@@ -14,9 +14,11 @@ if CURRENT_DIR not in sys.path:
 try:
     from .monitor import collect_system_info
     from .utils import fmt_rate
+    from .history_store import append_history_sample, build_history_record, estimate_history_max_entries, load_history_samples
 except ImportError:
     from monitor import collect_system_info
     from utils import fmt_rate
+    from history_store import append_history_sample, build_history_record, estimate_history_max_entries, load_history_samples
 
 THEME_PRESETS = {
     "custom_dashboard": {"page_bg": "#171735", "page_bg_end": "#0c1026", "surface_bg": "rgba(18,24,52,0.84)", "surface_alt": "rgba(34,42,78,0.92)", "border": "rgba(120,133,196,0.18)", "muted_text": "rgba(204,214,255,0.72)", "accent": "#7c6cff", "text": "#f8fbff"},
@@ -37,7 +39,9 @@ def dashboard_texts(locale: str) -> Dict[str, str]:
         "default_chat_provider": "\u9ed8\u8ba4\u5bf9\u8bdd\u6a21\u578b", "model_source": "\u5f53\u524d\u6a21\u578b\u6765\u6e90", "model_hint": "\u53e3\u5f84\u63d0\u793a", "not_set": "\u672a\u8bbe\u7f6e",
         "source_active_provider": "\u8fd0\u884c\u65f6\u5f53\u524d\u6a21\u578b", "source_default_provider": "\u5df2\u843d\u76d8\u9ed8\u8ba4\u6a21\u578b", "source_active_fallback": "\u8fd0\u884c\u65f6\u56de\u9000\uff08\u672a\u8bbe\u7f6e\u9ed8\u8ba4\u6a21\u578b\uff09",
         "hint_default_missing": "default_provider_id \u4e3a\u7a7a\uff1b\u5f53\u524d\u663e\u793a\u7684\u662f\u8fd0\u884c\u65f6\u56de\u9000\u6a21\u578b\uff0c\u4e0d\u662f\u843d\u76d8\u9ed8\u8ba4\u503c\u3002",
-        "hint_default_active_mismatch": "\u843d\u76d8\u9ed8\u8ba4\u6a21\u578b\u4e0e\u5f53\u524d\u6fc0\u6d3b\u6a21\u578b\u4e0d\u4e00\u81f4\uff1b\u53ef\u80fd\u5b58\u5728\u4f1a\u8bdd\u7ea7\u8986\u76d6\u6216\u8fd0\u884c\u65f6\u5207\u6362\u3002"
+        "hint_default_active_mismatch": "\u843d\u76d8\u9ed8\u8ba4\u6a21\u578b\u4e0e\u5f53\u524d\u6fc0\u6d3b\u6a21\u578b\u4e0d\u4e00\u81f4\uff1b\u53ef\u80fd\u5b58\u5728\u4f1a\u8bdd\u7ea7\u8986\u76d6\u6216\u8fd0\u884c\u65f6\u5207\u6362\u3002",
+        "temperature": "\u6e29\u5ea6", "battery": "\u7535\u6c60", "gpu": "GPU", "containers": "\u5bb9\u5668", "host_capabilities": "\u6269\u5c55\u80fd\u529b",
+        "charging": "\u5145\u7535\u4e2d", "on_battery": "\u7535\u6c60\u4f9b\u7535", "container_runtime": "\u5bb9\u5668\u8fd0\u884c\u65f6", "stopped_containers": "\u505c\u6b62\u5bb9\u5668", "sensor_count": "\u4f20\u611f\u5668", "deep_host_fallback": "\u65e0\u53ef\u7528\u6269\u5c55\u6307\u6807", "deep_host_metrics": "\u6df1\u5ea6\u4e3b\u673a\u6307\u6807", "gpu_history": "GPU \u8d8b\u52bf", "temperature_history": "\u6e29\u5ea6\u8d8b\u52bf"
     }
     en = {
         "default_title": "System Stats", "subtitle": "Overview of platforms, messages, and model usage.", "layout_hint": "DASHBOARD",
@@ -49,7 +53,9 @@ def dashboard_texts(locale: str) -> Dict[str, str]:
         "default_chat_provider": "Default Chat Provider", "model_source": "Current Model Source", "model_hint": "Model Hint", "not_set": "Not set",
         "source_active_provider": "Runtime active provider", "source_default_provider": "Persisted default provider", "source_active_fallback": "Runtime fallback (default provider not set)",
         "hint_default_missing": "`default_provider_id` is empty, so the current model shown here is a runtime fallback instead of a persisted default value.",
-        "hint_default_active_mismatch": "The persisted default provider differs from the current active provider. A session-level override or runtime switch may be in effect."
+        "hint_default_active_mismatch": "The persisted default provider differs from the current active provider. A session-level override or runtime switch may be in effect.",
+        "temperature": "Temperature", "battery": "Battery", "gpu": "GPU", "containers": "Containers", "host_capabilities": "Host Capabilities",
+        "charging": "Charging", "on_battery": "On battery", "container_runtime": "Container Runtime", "stopped_containers": "Stopped Containers", "sensor_count": "Sensors", "deep_host_fallback": "No optional host metrics available", "deep_host_metrics": "Deep Host Metrics", "gpu_history": "GPU Trend", "temperature_history": "Temperature Trend"
     }
     return zh if locale == 'zh' else en
 
@@ -97,6 +103,19 @@ def build_model_resolution(runtime: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def summarize_host_capabilities(capabilities: Dict[str, Any], texts: Dict[str, str]) -> str:
+    labels: List[str] = []
+    if capabilities.get('battery'):
+        labels.append(texts['battery'])
+    if capabilities.get('temperature'):
+        labels.append(texts['temperature'])
+    if capabilities.get('gpu'):
+        labels.append(texts['gpu'])
+    if capabilities.get('containers'):
+        labels.append(texts['containers'])
+    return ' / '.join(labels) if labels else texts['deep_host_fallback']
+
+
 def normalize_hex(color: Any, fallback: str) -> str:
     value = str(color or '').strip()
     if not value:
@@ -124,6 +143,13 @@ def build_theme_tokens(theme: str, accent_color: str, text_color: str) -> Dict[s
         'text_color': text, 'shadow_color': hex_to_rgba('#020617', 0.10 if theme == 'light_card' else 0.30),
         'overlay_color': hex_to_rgba('#020617', 0.34 if theme == 'light_card' else 0.62), 'chart_grid': hex_to_rgba(accent, 0.10),
     }
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def clamp_percent(value: Any) -> int:
@@ -254,6 +280,127 @@ def build_bar_chart(series: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         height = max(6, int(round((value / max_value) * 100))) if value > 0 else 6
         rows.append({'label': item.get('label', ''), 'value': format_full_number(value), 'height': height})
     return rows
+
+
+
+def downsample_series(series: List[Dict[str, Any]], limit: int = 36) -> List[Dict[str, Any]]:
+    if limit <= 0 or len(series) <= limit:
+        return list(series)
+    if limit == 1:
+        return [series[-1]]
+    indexes = []
+    last_index = len(series) - 1
+    for idx in range(limit):
+        pos = round(idx * last_index / (limit - 1))
+        if not indexes or pos != indexes[-1]:
+            indexes.append(pos)
+    if indexes[-1] != last_index:
+        indexes[-1] = last_index
+    return [series[pos] for pos in indexes]
+
+
+
+def build_sparkline_chart(series: List[Dict[str, Any]]) -> Dict[str, Any]:
+    width, height = 260, 92
+    left, right, top, bottom = 6, 6, 8, 10
+    values = [float(item.get('value', 0) or 0) for item in series]
+    if not values:
+        return {'width': width, 'height': height, 'points': '', 'area_points': '', 'start_label': '', 'end_label': ''}
+    max_value = max(values + [1.0])
+    min_value = min(values + [0.0])
+    span = max(max_value - min_value, 1.0)
+    plot_width = width - left - right
+    plot_height = height - top - bottom
+    points: List[str] = []
+    for idx, value in enumerate(values):
+        x = left if len(values) == 1 else left + plot_width * idx / max(1, len(values) - 1)
+        y = top + plot_height * (1 - ((value - min_value) / span))
+        points.append(f'{x:.1f},{y:.1f}')
+    area_points: List[str] = []
+    if points:
+        area_points.append(f"{points[0].split(',')[0]},{height - bottom}")
+        area_points.extend(points)
+        area_points.append(f"{points[-1].split(',')[0]},{height - bottom}")
+    return {
+        'width': width,
+        'height': height,
+        'points': ' '.join(points),
+        'area_points': ' '.join(area_points),
+        'start_label': str(series[0].get('label', '')),
+        'end_label': str(series[-1].get('label', '')),
+    }
+
+
+
+def history_tick_label(timestamp: float, window_hours: int) -> str:
+    dt = datetime.datetime.fromtimestamp(float(timestamp))
+    return dt.strftime('%m-%d %H:%M') if window_hours > 24 else dt.strftime('%H:%M')
+
+
+
+def build_system_history_panel(
+    samples: List[Dict[str, Any]],
+    hours: int,
+    points: int,
+    texts: Dict[str, str],
+    bar_colors: Dict[str, str],
+    include_gpu: bool = False,
+    include_temperature: bool = False,
+) -> Optional[Dict[str, Any]]:
+    if not samples:
+        return {
+            'kicker': texts['history_sampling'],
+            'title': texts['system_history'],
+            'cards': [],
+            'empty_text': texts['history_waiting'],
+        }
+
+    latest = samples[-1]
+    window_label = texts['history_window_template'].format(hours=hours)
+    metric_defs = [
+        ('cpu_percent', texts['cpu'], bar_colors['cpu'], lambda value: f"{clamp_percent(value)}%", lambda _samples: True),
+        ('memory_percent', texts['memory'], bar_colors['memory'], lambda value: f"{clamp_percent(value)}%", lambda _samples: True),
+        ('disk_percent', texts['disk'], bar_colors['disk'], lambda value: f"{clamp_percent(value)}%", lambda _samples: True),
+        ('network_total_bps', texts['network'], bar_colors['network'], lambda value: fmt_rate(float(value or 0)), lambda _samples: True),
+        ('gpu_util_percent', texts['gpu_history'], bar_colors['cpu'], lambda value: f"{clamp_percent(value)}%", lambda rows: include_gpu and any(float(row.get('gpu_present', 0) or 0) > 0 for row in rows)),
+        ('temperature_c', texts['temperature_history'], bar_colors['disk'], lambda value: f"{_safe_float(value, 0.0):.0f}°C", lambda rows: include_temperature and any(float(row.get('temperature_present', 0) or 0) > 0 for row in rows)),
+    ]
+
+    cards: List[Dict[str, Any]] = []
+    for field, label, color, formatter, predicate in metric_defs:
+        if not predicate(samples):
+            continue
+        raw_series = [
+            {'label': history_tick_label(float(row.get('timestamp', 0) or 0), hours), 'value': float(row.get(field, 0) or 0)}
+            for row in samples
+        ]
+        values = [float(item['value']) for item in raw_series]
+        if not values:
+            continue
+        compact = downsample_series(raw_series, limit=max(12, points))
+        chart = build_sparkline_chart(compact)
+        peak = max(values)
+        avg = sum(values) / max(1, len(values))
+        note = f"{texts['history_peak']} {formatter(peak)} / {texts['history_average']} {formatter(avg)}"
+        if field == 'network_total_bps':
+            note = f"UL {fmt_rate(float(latest.get('network_up_bps', 0) or 0))} / DL {fmt_rate(float(latest.get('network_down_bps', 0) or 0))}"
+        cards.append(
+            {
+                'label': label,
+                'value': formatter(latest.get(field, 0)),
+                'note': note,
+                'window_label': window_label,
+                'footer': f"{chart['start_label']} -> {chart['end_label']}" if chart['start_label'] and chart['end_label'] else '',
+                'progress_color': color,
+                'chart': chart,
+            }
+        )
+    return {
+        'kicker': texts['history_sampling'],
+        'title': texts['system_history'],
+        'cards': cards,
+        'empty_text': texts['history_waiting'],
+    }
 
 
 async def maybe_await(value: Any) -> Any:
@@ -1036,6 +1183,12 @@ async def build_dashboard_render_data(
     render_scale = max(1, int(cfg.get('render_scale', 3)))
     requested_height = max(1560, int(cfg.get('height', 1760)))
     texts = dashboard_texts(locale)
+    texts.setdefault('system_history', '系统历史趋势' if locale == 'zh' else 'System History')
+    texts.setdefault('history_sampling', '历史采样' if locale == 'zh' else 'History Sampling')
+    texts.setdefault('history_waiting', '等待历史采样数据' if locale == 'zh' else 'Waiting for history samples')
+    texts.setdefault('history_peak', '峰值' if locale == 'zh' else 'Peak')
+    texts.setdefault('history_average', '均值' if locale == 'zh' else 'Average')
+    texts.setdefault('history_window_template', '最近 {hours} 小时' if locale == 'zh' else 'Last {hours}h')
     theme_tokens = build_theme_tokens(
         theme,
         str(cfg.get('accent_color', '#6366f1')),
@@ -1067,6 +1220,17 @@ async def build_dashboard_render_data(
     process_show_user = bool(cfg.get('process_show_user', True))
     process_sort_key = str(cfg.get('process_sort_key', 'cpu'))
     bottom_right_panel = str(cfg.get('bottom_right_panel', 'processes'))
+    enable_system_history = bool(cfg.get('enable_system_history', True))
+    show_system_history_panel = enable_system_history and bool(cfg.get('show_system_history_panel', True))
+    enable_deep_host_metrics = bool(cfg.get('enable_deep_host_metrics', True))
+    show_battery_card = enable_deep_host_metrics and bool(cfg.get('show_battery_card', True))
+    show_temperature_card = enable_deep_host_metrics and bool(cfg.get('show_temperature_card', True))
+    show_gpu_card = enable_deep_host_metrics and bool(cfg.get('show_gpu_card', True))
+    show_container_card = enable_deep_host_metrics and bool(cfg.get('show_container_card', True))
+    history_sample_minutes = max(1, int(cfg.get('history_sample_minutes', 5) or 5))
+    history_retention_hours = max(1, int(cfg.get('history_retention_hours', 72) or 72))
+    history_chart_hours = max(1, int(cfg.get('history_chart_hours', 24) or 24))
+    history_chart_points = max(12, int(cfg.get('history_chart_points', 36) or 36))
 
     stats = await collect_astrbot_dashboard_stats(context, hours=24, umo=umo)
     sysinfo = await collect_system_info(
@@ -1082,7 +1246,31 @@ async def build_dashboard_render_data(
         show_top_processes=show_top_processes or bottom_right_panel == 'processes',
         top_n=max(1, int(cfg.get('top_n', 10))),
         process_sort_key=process_sort_key,
+        enable_deep_host_metrics=enable_deep_host_metrics,
+        show_battery=enable_deep_host_metrics,
+        show_temperature=enable_deep_host_metrics,
+        show_gpu=enable_deep_host_metrics,
+        show_containers=enable_deep_host_metrics,
     )
+    if enable_system_history:
+        try:
+            append_history_sample(
+                build_history_record(sysinfo),
+                retention_hours=history_retention_hours,
+                max_entries=estimate_history_max_entries(history_retention_hours, history_sample_minutes),
+            )
+        except Exception:
+            pass
+    history_samples = load_history_samples(hours=history_chart_hours) if show_system_history_panel else []
+    system_history_panel = build_system_history_panel(
+        history_samples,
+        hours=history_chart_hours,
+        points=history_chart_points,
+        texts=texts,
+        bar_colors=bar_colors,
+        include_gpu=show_gpu_card,
+        include_temperature=show_temperature_card,
+    ) if show_system_history_panel else None
     system = collect_system_snapshot()
     now = datetime.datetime.now()
     uptime = format_duration(now.timestamp() - psutil.boot_time())
@@ -1090,6 +1278,11 @@ async def build_dashboard_render_data(
     mem = sysinfo.get('mem') or {}
     swap = sysinfo.get('swap') or {}
     disk_total = (sysinfo.get('disk_total') or {}) if show_disk_total else {}
+    battery_info = sysinfo.get('battery') or {}
+    temperature_info = sysinfo.get('temperature') or {}
+    gpu_info = sysinfo.get('gpu') or {}
+    container_info = sysinfo.get('containers') or {}
+    host_capabilities = sysinfo.get('host_capabilities') or {}
     net_sent = int(sysinfo.get('net_sent', 0) or 0)
     net_recv = int(sysinfo.get('net_recv', 0) or 0)
     net_peak = max(net_sent, net_recv, 1)
@@ -1153,6 +1346,67 @@ async def build_dashboard_render_data(
             'progress_color': bar_colors['network'],
         })
 
+    if show_temperature_card and temperature_info:
+        current_c = _safe_float(temperature_info.get('current_c'), 0.0)
+        reference_c = max(1.0, _safe_float(temperature_info.get('reference_c'), 100.0))
+        temperature_note = f"{temperature_info.get('label', texts['temperature'])} / {texts['sensor_count']} {temperature_info.get('sensor_count', 1)}"
+        average_c = temperature_info.get('average_c')
+        if average_c not in (None, ''):
+            temperature_note += f" / AVG {average_c}°C"
+        system_metric_cards.append({
+            'label': texts['temperature'],
+            'value': f"{current_c:g}°C",
+            'note': temperature_note,
+            'progress': clamp_percent(current_c / reference_c * 100),
+            'progress_color': bar_colors['cpu'],
+        })
+    if show_battery_card and battery_info:
+        battery_percent = clamp_percent(battery_info.get('percent', 0))
+        battery_note = texts['charging'] if battery_info.get('plugged') else texts['on_battery']
+        if battery_info.get('time_left'):
+            battery_note = f"{battery_note} / {battery_info.get('time_left')}"
+        system_metric_cards.append({
+            'label': texts['battery'],
+            'value': f"{battery_percent}%",
+            'note': battery_note,
+            'progress': battery_percent,
+            'progress_color': bar_colors['memory'],
+        })
+    if show_gpu_card and gpu_info:
+        gpu_util = clamp_percent(gpu_info.get('util_percent', gpu_info.get('mem_percent', 0)))
+        gpu_note_parts = [truncate(str(gpu_info.get('name', texts['gpu'])), 32)]
+        if gpu_info.get('temp_c') not in (None, ''):
+            gpu_note_parts.append(f"{gpu_info.get('temp_c')}°C")
+        if gpu_info.get('memory_total_h'):
+            gpu_note_parts.append(f"{gpu_info.get('memory_used_h', '0 B')} / {gpu_info.get('memory_total_h', '0 B')}")
+        system_metric_cards.append({
+            'label': texts['gpu'],
+            'value': f"{gpu_util}%",
+            'note': ' / '.join(part for part in gpu_note_parts if part),
+            'progress': gpu_util,
+            'progress_color': default_accent,
+        })
+    if show_container_card and container_info:
+        running_count = int(container_info.get('running', 0) or 0)
+        total_count = max(running_count, int(container_info.get('total', 0) or 0))
+        stopped_count = max(0, int(container_info.get('stopped', 0) or 0))
+        names = ', '.join(container_info.get('names') or [])
+        stopped_names = ', '.join(container_info.get('stopped_names') or [])
+        container_note = f"{container_info.get('runtime', 'docker')} / {running_count}/{total_count}"
+        if stopped_count:
+            container_note += f" / {texts['stopped_containers']} {stopped_count}"
+        if stopped_names:
+            container_note += f" / {truncate(stopped_names, 36)}"
+        elif names:
+            container_note += f" / {truncate(names, 36)}"
+        system_metric_cards.append({
+            'label': texts['containers'],
+            'value': f"{running_count}/{total_count}",
+            'note': container_note,
+            'progress': clamp_percent((running_count / total_count) * 100) if total_count else 0,
+            'progress_color': default_accent,
+        })
+
     token_top = [dict(row, progress_color=default_accent) for row in with_ratio(stats.get('token_top', []), 'raw')]
     platform_ranking_rows = [dict(row, progress_color=default_accent) for row in with_ratio(stats.get('platform_ranking', []), 'raw')]
     token_chart_bars = [dict(bar, color=default_accent) for bar in stats.get('token_chart_bars', [])]
@@ -1182,6 +1436,13 @@ async def build_dashboard_render_data(
     info_rows.append({'label': texts['processor'], 'value': sysinfo.get('processor', system['processor'])})
     if show_time:
         info_rows.append({'label': texts['current_time'], 'value': now.strftime('%Y-%m-%d %H:%M:%S')})
+
+    if enable_deep_host_metrics:
+        info_rows.append({'label': texts['host_capabilities'], 'value': summarize_host_capabilities(host_capabilities, texts)})
+        if gpu_info:
+            info_rows.append({'label': texts['gpu'], 'value': truncate(str(gpu_info.get('name', texts['gpu'])), 48)})
+        if container_info:
+            info_rows.append({'label': texts['container_runtime'], 'value': f"{container_info.get('runtime', 'docker')} {container_info.get('running', 0)}/{container_info.get('total', 0)}" + (f" / {texts['stopped_containers']} {container_info.get('stopped', 0)}" if int(container_info.get('stopped', 0) or 0) > 0 else '')})
 
     disk_rows: List[Dict[str, Any]] = []
     for row in (sysinfo.get('disk_info') or [])[:4]:
@@ -1258,6 +1519,58 @@ async def build_dashboard_render_data(
                 {'name': texts['today_tokens'], 'value': format_full_number(stats.get('today_tokens', 0)), 'note': texts['tokens_24h']},
             ],
         }
+    elif bottom_right_panel == 'deep_host':
+        deep_rows: List[Dict[str, Any]] = []
+        for idx, gpu_row in enumerate((gpu_info.get('gpus') or [])[:4], start=1):
+            gpu_name = truncate(str(gpu_row.get('name', texts['gpu'])), 24)
+            gpu_note_parts = []
+            if gpu_row.get('temp_c') not in (None, ''):
+                gpu_note_parts.append(f"{gpu_row.get('temp_c')}°C")
+            if gpu_row.get('memory_total_h'):
+                gpu_note_parts.append(f"{gpu_row.get('memory_used_h', '0 B')} / {gpu_row.get('memory_total_h', '0 B')}")
+            deep_rows.append({
+                'name': f"GPU {idx} ? {gpu_name}",
+                'value': f"{clamp_percent(gpu_row.get('util_percent', 0))}%",
+                'note': ' / '.join(gpu_note_parts),
+                'ratio': clamp_percent(gpu_row.get('util_percent', 0)),
+                'progress_color': default_accent,
+            })
+        if temperature_info:
+            deep_rows.append({
+                'name': texts['temperature'],
+                'value': f"{_safe_float(temperature_info.get('current_c'), 0.0):.0f}°C",
+                'note': f"{temperature_info.get('label', texts['temperature'])} / {texts['sensor_count']} {temperature_info.get('sensor_count', 1)} / AVG {temperature_info.get('average_c', temperature_info.get('current_c', 0))}°C",
+                'ratio': clamp_percent(_safe_float(temperature_info.get('current_c'), 0.0)),
+                'progress_color': bar_colors['disk'],
+            })
+        if battery_info:
+            deep_rows.append({
+                'name': texts['battery'],
+                'value': f"{clamp_percent(battery_info.get('percent', 0))}%",
+                'note': (texts['charging'] if battery_info.get('plugged') else texts['on_battery']) + (f" / {battery_info.get('time_left')}" if battery_info.get('time_left') else ''),
+                'ratio': clamp_percent(battery_info.get('percent', 0)),
+                'progress_color': bar_colors['memory'],
+            })
+        if container_info:
+            container_names = ', '.join(container_info.get('names') or [])
+            stopped_names = ', '.join(container_info.get('stopped_names') or [])
+            stopped_count = max(0, int(container_info.get('stopped', 0) or 0))
+            container_note = truncate(stopped_names, 44) if stopped_names else (truncate(container_names, 44) if container_names else str(container_info.get('runtime', 'docker')))
+            if stopped_count:
+                container_note = f"{texts['stopped_containers']} {stopped_count}" + (f" / {container_note}" if container_note else '')
+            deep_rows.append({
+                'name': texts['containers'],
+                'value': f"{container_info.get('running', 0)}/{container_info.get('total', 0)}",
+                'note': container_note,
+                'ratio': clamp_percent((int(container_info.get('running', 0) or 0) / max(1, int(container_info.get('total', 0) or 0))) * 100),
+                'progress_color': default_accent,
+            })
+        if deep_rows:
+            bottom_panel = {
+                'kicker': texts['host_capabilities'],
+                'title': texts['deep_host_metrics'],
+                'rows': deep_rows,
+            }
 
     visible_panels = 1 + int(show_disk_panel) + int(bottom_panel is not None)
     span_class = 'span-4'
@@ -1270,8 +1583,11 @@ async def build_dashboard_render_data(
     logical_height = max(
         requested_height,
         1460
+        + (380 if system_history_panel else 0)
+        + (max(0, len((system_history_panel or {}).get('cards', [])) - 4) // 2 + (1 if max(0, len((system_history_panel or {}).get('cards', [])) - 4) % 2 else 0)) * 168
         + max(0, len(summary_cards) - 4) * 32
         + max(0, len(system_metric_cards) - 6) * 48
+        + max(0, len(info_rows) - 8) * 24
         + (max(0, len(disk_rows) - 2) * 30 if show_disk_panel else 0)
         + (max(0, bottom_row_count - 4) * 26 if bottom_panel else 0)
         + max(0, len(token_top) - 5) * 30,
@@ -1300,6 +1616,7 @@ async def build_dashboard_render_data(
         'footer_class': footer_class,
         'summary_cards': summary_cards,
         'system_metric_cards': system_metric_cards,
+        'system_history_panel': system_history_panel,
         'message_chart': stats.get('message_chart', build_line_chart([])),
         'message_total': format_full_number(stats.get('message_total', 0)),
         'platform_ranking_rows': platform_ranking_rows,
